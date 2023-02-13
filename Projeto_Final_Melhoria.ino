@@ -14,9 +14,13 @@
 
 //---------------- Actuators PINS -----------------//
 #define LED_PIN 13  //led
+//---------------- Sensors PINS -----------------//
+#define LM35_Pin 4     //temperature lm35
+#define GAS_PIN 15     //analog gas
+#define LIGHT_PIN 26    //ambient light sensor
 
 //---------------- ADDITIONAL CONSTANTS -----------------//
-#define ADC_RESOLUTION 10
+#define ADC_RESOLUTION 12
 #define FREQ 5000
 char last_gesture;
 
@@ -24,6 +28,9 @@ char last_gesture;
 void vSkywriter_Task(void *pvParameters);
 void vGestureManager_Task(void *pvParameters);
 void vLEDPWM(void *pvParameters);
+void vTemperature(void *pvParameters);
+void vAnalogGas(void *pvParameters);
+void vAmbientLight(void *pvParameters);
 
 /* Declare a variable of type SemaphoreHandle_t.  This is used to reference the
 semaphore that is used to synchronize a task with an interrupt. */
@@ -41,6 +48,9 @@ void setup() {
 
   /*Sensors Tasks*/
   xTaskCreatePinnedToCore(vLEDPWM, "PWM for LED Task", 1024, NULL, 1, NULL, 1);
+  xTaskCreatePinnedToCore(vTemperature, "Temperature Measurement Task", 1024, NULL, 1, NULL, 1);
+  xTaskCreatePinnedToCore(vAnalogGas, "Analog Gas Measurement Task", 2048, NULL, 1, NULL, 1);
+  xTaskCreatePinnedToCore(vAmbientLight, "Ambient Light Measurement Task", 2048, NULL, 1, NULL, 1);
   analogReadResolution(ADC_RESOLUTION);
 
   /* Before a semaphore is used it must be explicitly created.  In this example
@@ -63,6 +73,36 @@ void setup() {
 
     /* Create the other task in exactly the same way. */
     xTaskCreatePinnedToCore(vGestureManager_Task, "Gesture Manager", 2048, NULL, 1, NULL, 1);
+  }
+}
+
+void vTemperature(void *pvParameters) {
+  int analogTemp;
+  float analogTemp_voltage;
+  for (;;) {
+    analogTemp = analogRead(LM35_Pin);
+    analogTemp_voltage = (500 * analogTemp) / 4096;
+    Serial.print("Temp:");  //Display the temperature on Serial monitor
+    Serial.println(analogTemp_voltage);
+    vTaskDelay(250 / portTICK_PERIOD_MS);
+  }
+}
+
+void vAnalogGas(void *pvParameters) {
+  int val;
+  for (;;) {
+    val = analogRead(GAS_PIN);
+    Serial.printf("Gas: %d\n", val);
+    vTaskDelay(250 / portTICK_PERIOD_MS);
+  }
+}
+
+void vAmbientLight(void *pvParameters) {
+  int val;
+  for (;;) {
+    val = analogRead(LIGHT_PIN);
+    Serial.printf("Lum: %d\n", val);
+    vTaskDelay(250 / portTICK_PERIOD_MS);
   }
 }
 
