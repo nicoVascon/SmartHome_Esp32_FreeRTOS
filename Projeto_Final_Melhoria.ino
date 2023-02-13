@@ -7,11 +7,11 @@
 #include "esp_system.h"
 //---------------- PINS -----------------//
 
-#define LED_PIN 25    //led
+#define LED_PIN 13    //led
 
 //-------- ADDITIONAL CONSTANTS ---------//
 #define ADC_RESOLUTION 10
-
+#define FREQ 5000
 //--------------- TASKS -----------------//
 void vLEDPWM(void *pvParameters);
 
@@ -21,6 +21,9 @@ void setup() {
 }
 
 void vLEDPWM(void *pvParameters) {
+  int ledChannel = LED_PIN;
+  ledcSetup(ledChannel,FREQ,ADC_RESOLUTION);
+  ledcAttachPin(LED_PIN,ledChannel);
   for (;;) {
     for (int dutyCycle = 0; dutyCycle <= (pow(2,ADC_RESOLUTION)); dutyCycle++){
       ledcWrite(LED_PIN, dutyCycle);
