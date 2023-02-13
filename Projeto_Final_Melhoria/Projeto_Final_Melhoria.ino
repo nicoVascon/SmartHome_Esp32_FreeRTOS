@@ -8,7 +8,7 @@
 //---------------- PINS -----------------//
 #define BUZZER_Pin 32 //sound buzzer
 #define LM35_Pin 4    //temperature lm35
-#define LED_PIN 25    //led
+#define LED_PIN 13    //led
 #define GAS_PIN 15    //analog gas 
 #define LIGHT_PIN 26   //ambient light sensor
 // Set Adafruit tft pins
@@ -38,7 +38,7 @@
 #define NOTE_A5 880
 #define NOTE_B5 988
 #define ADC_RESOLUTION 10
-
+#define FREQ 5000
 //--------------- TASKS -----------------//
 void vTemperature(void *pvParameters);
 void vBuzzer(void *pvParameters);
@@ -90,16 +90,18 @@ void vAmbientLight(void *pvParameters) {
 }
 
 void vLEDPWM(void *pvParameters) {
+  int ledChannel = LED_PIN;
+  ledcSetup(ledChannel,FREQ,ADC_RESOLUTION);
+  ledcAttachPin(LED_PIN,ledChannel);
   for (;;) {
-    ledcWrite(LED_PIN, (pow(2,ADC_RESOLUTION)));
-    /*for (int dutyCycle = 0; dutyCycle <= (pow(2,ADC_RESOLUTION)); dutyCycle++){
+    for (int dutyCycle = 0; dutyCycle <= (pow(2,ADC_RESOLUTION)); dutyCycle++){
       ledcWrite(LED_PIN, dutyCycle);
       vTaskDelay(1 / portTICK_PERIOD_MS);
     }
     for (int dutyCycle = (pow(2,ADC_RESOLUTION)); dutyCycle >= 0; dutyCycle--){
       ledcWrite(LED_PIN, dutyCycle);
       vTaskDelay(1 / portTICK_PERIOD_MS);
-    }*/
+    }
   }
 }
 
@@ -136,7 +138,7 @@ void vLCDTask(void *pvParameters) {
   tft.setTextSize(2);
   tft.println("Hum");
   for (;;) {
-
+    
     vTaskDelay(500 / portTICK_PERIOD_MS);
   }
 }
