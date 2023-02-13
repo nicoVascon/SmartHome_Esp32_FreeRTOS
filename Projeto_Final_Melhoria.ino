@@ -22,7 +22,9 @@
 //---------------- ADDITIONAL CONSTANTS -----------------//
 #define ADC_RESOLUTION 12
 #define FREQ 5000
-char last_gesture;
+
+/*IRS*/
+void my_poll(void);
 
 /* The task functions. */
 void vSkywriter_Task(void *pvParameters);
@@ -35,6 +37,7 @@ void vAmbientLight(void *pvParameters);
 /* Declare a variable of type SemaphoreHandle_t.  This is used to reference the
 semaphore that is used to synchronize a task with an interrupt. */
 SemaphoreHandle_t xBinarySemaphore;
+SemaphoreHandle_t xSkywriter_Semaphore;
 
 /*Queues*/
 QueueHandle_t xGesturesQueue;
@@ -55,13 +58,13 @@ void setup() {
 
   /* Before a semaphore is used it must be explicitly created.  In this example
   a binary semaphore is created. */
-  vSemaphoreCreateBinary(xBinarySemaphore);
+  vSemaphoreCreateBinary(xSkywriter_Semaphore);
 
   /*Queues Creation*/
   xGesturesQueue = xQueueCreate(5, sizeof(char));
 
   /* Check the semaphore was created successfully. */
-  if (xBinarySemaphore != NULL) {
+  if (xSkywriter_Semaphore != NULL) {
     /* Create one of the two tasks. */
     xTaskCreatePinnedToCore(vSkywriter_Task,  /* Pointer to the function that implements the task. */
                             "Skywriter Task", /* Text name for the task.  This is to facilitate debugging only. */
@@ -71,8 +74,37 @@ void setup() {
                             NULL,             /* We are not using the task handle. */
                             1);               /* Core where the task should run */
 
+    /* Set up the initial interrupt */
+    Skywriter.begin(PIN_TRFD, PIN_RESET);
+    Skywriter.onGesture(gesture);
+
+    // pinMode(PIN_TRFD, INPUT_PULLDOWN);
+    attachInterrupt(digitalPinToInterrupt(PIN_TRFD), &my_poll, FALLING);
+    // attachInterrupt(digitalPinToInterrupt(PIN_TRFD), &my_poll, FALLING);
+
     /* Create the other task in exactly the same way. */
     xTaskCreatePinnedToCore(vGestureManager_Task, "Gesture Manager", 2048, NULL, 1, NULL, 1);
+  }
+}
+
+void my_poll(void) {
+  static signed portBASE_TYPE xHigherPriorityTaskWoken;
+
+  xHigherPriorityTaskWoken = pdFALSE;
+
+  /* 'Give' the semaphore to unblock the task. */
+  xSemaphoreGiveFromISR(xSkywriter_Semaphore, (signed portBASE_TYPE *)&xHigherPriorityTaskWoken);
+
+  if (xHigherPriorityTaskWoken == pdTRUE) {
+    /* Giving the semaphore unblocked a task, and the priority of the
+    unblocked task is higher than the currently running task - force
+    a context switch to ensure that the interrupt returns directly to
+    the unblocked (higher priority) task.
+
+    NOTE: The syntax for forcing a context switch is different depending
+    on the port being used.  Refer to the examples for the port you are
+    using for the correct method to use! */
+    portYIELD_FROM_ISR();
   }
 }
 
@@ -111,13 +143,13 @@ void vLEDPWM(void *pvParameters) {
   ledcSetup(ledChannel,FREQ,ADC_RESOLUTION);
   ledcAttachPin(LED_PIN,ledChannel);
   for (;;) {
-    for (int dutyCycle = 0; dutyCycle <= (pow(2,ADC_RESOLUTION)); dutyCycle++){
+    for (int dutyCycle = 0; dutyCycle <= (pow(2,ADC_RESOLUTION)); dutyCycle += 40){
       ledcWrite(LED_PIN, dutyCycle);
-      vTaskDelay(1 / portTICK_PERIOD_MS);
+      vTaskDelay(10 / portTICK_PERIOD_MS);
     }
-    for (int dutyCycle = (pow(2,ADC_RESOLUTION)); dutyCycle >= 0; dutyCycle--){
+    for (int dutyCycle = (pow(2,ADC_RESOLUTION)); dutyCycle >= 0; dutyCycle -= 40){
       ledcWrite(LED_PIN, dutyCycle);
-      vTaskDelay(1 / portTICK_PERIOD_MS);
+      vTaskDelay(10 / portTICK_PERIOD_MS);
     }
   }
 }
@@ -125,11 +157,13 @@ void vLEDPWM(void *pvParameters) {
 void vSkywriter_Task(void *pvParameters) {
   Skywriter.begin(PIN_TRFD, PIN_RESET);
   Skywriter.onGesture(gesture);
-  // Skywriter.onXYZ(handle_xyz);
+
+  xSemaphoreTake(xSkywriter_Semaphore, 0);
   /* As per most tasks, this task is implemented in an infinite loop. */
   for (;;) {
+    xSemaphoreTake(xSkywriter_Semaphore, portMAX_DELAY);
+
     Skywriter.poll();
-    vTaskDelay(250 / portTICK_PERIOD_MS);
   }
 }
 /*-----------------------------------------------------------*/
@@ -137,25 +171,12 @@ void vSkywriter_Task(void *pvParameters) {
 void vGestureManager_Task(void *pvParameters) {
   char gesture;
 
-  /* Note that when you create a binary semaphore in FreeRTOS, it is ready
-  to be taken, so you may want to take the semaphore after you create it
-  so that the task waiting on this semaphore will block until given by
-  another task. */
-  xSemaphoreTake(xBinarySemaphore, 0);
-
   /* As per most tasks, this task is implemented within an infinite loop. */
   for (;;) {
-    /* Use the semaphore to wait for the event.  The semaphore was created
-    before the scheduler was started so before this task ran for the first
-    time.  The task blocks indefinitely meaning this function call will only
-    return once the semaphore has been successfully obtained - so there is no
-    need to check the returned value. */
-    xSemaphoreTake(xBinarySemaphore, portMAX_DELAY);
-
-    while (xQueueReceive(xGesturesQueue, &gesture, 0) != errQUEUE_EMPTY) {
+    if (xQueueReceive(xGesturesQueue, &gesture, portMAX_DELAY) != errQUEUE_EMPTY) {
       /* To get here the event must have occurred.  Process the event (in this
       case we just print out a message). */
-      Serial.printf("Gesture Manager Task - Gesture: %d\r\n", last_gesture);
+      Serial.printf("Gesture Manager Task - Gesture: %d\r\n", gesture);
     }
   }
 }
@@ -165,9 +186,8 @@ void loop() {
 }
 
 void gesture(unsigned char type) {
-  last_gesture = type;
+  char last_gesture = type;
   xQueueSendToBack(xGesturesQueue, &last_gesture, 0);
-  xSemaphoreGive(xBinarySemaphore);
 }
 
 void handle_xyz(unsigned int x, unsigned int y, unsigned int z) {
