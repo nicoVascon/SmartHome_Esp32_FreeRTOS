@@ -97,6 +97,8 @@ void vAmbientLight(void *pvParameters) {
 
 
 void vLCDTask(void *pvParameters) {
+  int pos[] = {2,1,0};
+  const char* layout[3] = {"Gas:  ", "Temp: ", "Lum:  "};
   //ESP32Time rtc(3600);  // offset in seconds GMT+1
   Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_MOSI, TFT_CLK, TFT_RST, TFT_MISO);
   tft.begin();
