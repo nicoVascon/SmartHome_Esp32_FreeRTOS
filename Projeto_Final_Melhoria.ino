@@ -12,11 +12,18 @@
 #define PIN_TRFD 27
 #define PIN_RESET 17
 
+//---------------- Actuators PINS -----------------//
+#define LED_PIN 13  //led
+
+//---------------- ADDITIONAL CONSTANTS -----------------//
+#define ADC_RESOLUTION 10
+
 char last_gesture;
 
 /* The task functions. */
 void vSkywriter_Task(void *pvParameters);
 void vGestureManager_Task(void *pvParameters);
+void vLEDPWM(void *pvParameters);
 
 /* Declare a variable of type SemaphoreHandle_t.  This is used to reference the
 semaphore that is used to synchronize a task with an interrupt. */
@@ -31,6 +38,10 @@ void setup() {
   while (!Serial) {};
 
   Serial.println("Hello world!");
+
+  /*Sensors Tasks*/
+  xTaskCreatePinnedToCore(vLEDPWM, "PWM for LED Task", 1024, NULL, 1, NULL, 1);
+  analogReadResolution(ADC_RESOLUTION);
 
   /* Before a semaphore is used it must be explicitly created.  In this example
   a binary semaphore is created. */
@@ -52,6 +63,19 @@ void setup() {
 
     /* Create the other task in exactly the same way. */
     xTaskCreatePinnedToCore(vGestureManager_Task, "Gesture Manager", 2048, NULL, 1, NULL, 1);
+  }
+}
+
+void vLEDPWM(void *pvParameters) {
+  for (;;) {
+    for (int dutyCycle = 0; dutyCycle <= (pow(2, ADC_RESOLUTION)); dutyCycle++) {
+      ledcWrite(LED_PIN, dutyCycle);
+      vTaskDelay(1 / portTICK_PERIOD_MS);
+    }
+    for (int dutyCycle = (pow(2, ADC_RESOLUTION)); dutyCycle >= 0; dutyCycle--) {
+      ledcWrite(LED_PIN, dutyCycle);
+      vTaskDelay(1 / portTICK_PERIOD_MS);
+    }
   }
 }
 
