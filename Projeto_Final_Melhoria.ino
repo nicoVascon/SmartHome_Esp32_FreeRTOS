@@ -17,7 +17,7 @@
 
 //---------------- ADDITIONAL CONSTANTS -----------------//
 #define ADC_RESOLUTION 10
-
+#define FREQ 5000
 char last_gesture;
 
 /* The task functions. */
@@ -67,12 +67,15 @@ void setup() {
 }
 
 void vLEDPWM(void *pvParameters) {
+  int ledChannel = LED_PIN;
+  ledcSetup(ledChannel,FREQ,ADC_RESOLUTION);
+  ledcAttachPin(LED_PIN,ledChannel);
   for (;;) {
-    for (int dutyCycle = 0; dutyCycle <= (pow(2, ADC_RESOLUTION)); dutyCycle++) {
+    for (int dutyCycle = 0; dutyCycle <= (pow(2,ADC_RESOLUTION)); dutyCycle++){
       ledcWrite(LED_PIN, dutyCycle);
       vTaskDelay(1 / portTICK_PERIOD_MS);
     }
-    for (int dutyCycle = (pow(2, ADC_RESOLUTION)); dutyCycle >= 0; dutyCycle--) {
+    for (int dutyCycle = (pow(2,ADC_RESOLUTION)); dutyCycle >= 0; dutyCycle--){
       ledcWrite(LED_PIN, dutyCycle);
       vTaskDelay(1 / portTICK_PERIOD_MS);
     }
