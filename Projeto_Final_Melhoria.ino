@@ -26,10 +26,15 @@ void setup() {
 
 
 void vLCDTask(void *pvParameters) {
+  ESP32Time rtc(3600);  // offset in seconds GMT+1
+  rtc.setTime(10, 50, 8, 17, 1, 2021);  // 17th Jan 2021 15:24:30
   int pos[] = {0,1,2};
   const char* layout[3] = {"GAS ", "TEMP", "LUM "};
   int values_test[] ={20,24,30};
-  //ESP32Time rtc(3600);  // offset in seconds GMT+1
+  char stringTime[8];
+  TickType_t xLastWakeTime;
+  const TickType_t xFrequency = 1000;
+  xLastWakeTime = xTaskGetTickCount();
   Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_MOSI, TFT_CLK, TFT_RST, TFT_MISO);
   tft.begin();
   tft.fillScreen(ILI9341_BLACK);
@@ -41,11 +46,12 @@ void vLCDTask(void *pvParameters) {
   tft.fillRect(247, 92, 66, 56, ILI9341_BLACK);
   tft.fillRect(85, 30, 150, 190, ILI9341_WHITE);
   tft.fillRect(87, 32, 146, 186, ILI9341_BLACK);
-  tft.setCursor(10, 2);
   tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
-  tft.println("--:--:--");
   for (;;) {
     tft.setTextSize(2);
+    tft.setCursor(10, 2);
+    sprintf(stringTime, "%02d:%02d:%02d", rtc.getHour(true), rtc.getMinute(),rtc.getSecond());
+    tft.println(stringTime);
     tft.setCursor(15, 100);
     tft.println(layout[pos[0]]);
     tft.setCursor(255, 100);
@@ -59,7 +65,7 @@ void vLCDTask(void *pvParameters) {
     tft.println(layout[pos[1]]);
     tft.setCursor(95, 90);
     tft.println(values_test[pos[1]]);
-    vTaskDelay(500 / portTICK_PERIOD_MS);
+    vTaskDelayUntil( &xLastWakeTime, xFrequency );
   }
 }
 
