@@ -45,7 +45,7 @@ void vBuzzer(void *pvParameters);
 void vAnalogGas(void *pvParameters);
 void vAmbientLight(void *pvParameters);
 void vLCDTask(void *pvParameters);
-
+voi vLEDPWM(void *pvParameters);
 
 void setup() {
   Serial.begin(9600);//Set Baud Rate to 9600 bps
@@ -53,6 +53,7 @@ void setup() {
   xTaskCreatePinnedToCore(vAnalogGas, "Analog Gas Measurement Task", 1024, NULL, 1, NULL, 1);
   xTaskCreatePinnedToCore(vAmbientLight, "Ambient Light Measurement Task", 1024, NULL, 1, NULL, 1);
   xTaskCreatePinnedToCore(vLCDTask, "TFT Display", 1024, NULL, 1, NULL, 1);
+  xTaskCreatePinnedToCore(vLEDPWM, "PWM for LED Task", 1024, NULL, 1, NULL, 1);
   //xTaskCreatePinnedToCore(vBuzzer, "Buzzer music", 1024, NULL,1,NULL,1);
   analogReadResolution(ADC_RESOLUTION);
 }
