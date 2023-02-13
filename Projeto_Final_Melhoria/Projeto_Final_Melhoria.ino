@@ -8,9 +8,9 @@
 //---------------- PINS -----------------//
 #define BUZZER_Pin 32 //sound buzzer
 #define LM35_Pin 4    //temperature lm35
-#define LED_PIN 13    //led
+#define LED_PIN 25    //led
 #define GAS_PIN 15    //analog gas 
-#define LIGHT_PIN 5   //ambient light sensor
+#define LIGHT_PIN 26   //ambient light sensor
 // Set Adafruit tft pins
 #define TFT_DC 33
 #define TFT_CS 3
@@ -37,7 +37,7 @@
 #define NOTE_G5 784
 #define NOTE_A5 880
 #define NOTE_B5 988
-#define ADC_RESOLUTION 12
+#define ADC_RESOLUTION 10
 
 //--------------- TASKS -----------------//
 void vTemperature(void *pvParameters);
@@ -45,16 +45,17 @@ void vBuzzer(void *pvParameters);
 void vAnalogGas(void *pvParameters);
 void vAmbientLight(void *pvParameters);
 void vLCDTask(void *pvParameters);
-voi vLEDPWM(void *pvParameters);
+void vLEDPWM(void *pvParameters);
 
 void setup() {
   Serial.begin(9600);//Set Baud Rate to 9600 bps
-  xTaskCreatePinnedToCore(vTemperature, "Temperature Measurement Task", 1024, NULL, 1, NULL, 1);
-  xTaskCreatePinnedToCore(vAnalogGas, "Analog Gas Measurement Task", 1024, NULL, 1, NULL, 1);
-  xTaskCreatePinnedToCore(vAmbientLight, "Ambient Light Measurement Task", 1024, NULL, 1, NULL, 1);
-  xTaskCreatePinnedToCore(vLCDTask, "TFT Display", 1024, NULL, 1, NULL, 1);
+  //xTaskCreatePinnedToCore(vTemperature, "Temperature Measurement Task", 1024, NULL, 1, NULL, 1);
+  //xTaskCreatePinnedToCore(vAnalogGas, "Analog Gas Measurement Task", 1024, NULL, 1, NULL, 1);
+  //xTaskCreatePinnedToCore(vAmbientLight, "Ambient Light Measurement Task", 1024, NULL, 1, NULL, 1);
+  //xTaskCreatePinnedToCore(vLCDTask, "TFT Display", 2048, NULL, 1, NULL, 1);
   xTaskCreatePinnedToCore(vLEDPWM, "PWM for LED Task", 1024, NULL, 1, NULL, 1);
   //xTaskCreatePinnedToCore(vBuzzer, "Buzzer music", 1024, NULL,1,NULL,1);
+  Serial.println("hello wolrd");
   analogReadResolution(ADC_RESOLUTION);
 }
 
@@ -80,16 +81,27 @@ void vAnalogGas(void *pvParameters) {
 }
 
 void vAmbientLight(void *pvParameters) {
-  int val;
+  int analogLight;
   for (;;) {
-    val = analogRead(LIGHT_PIN);
-    Serial.println(val);
+    analogLight = analogRead(LIGHT_PIN);
+    Serial.println(analogLight);
     vTaskDelay(250 / portTICK_PERIOD_MS);
   }
 }
 
-
-
+void vLEDPWM(void *pvParameters) {
+  for (;;) {
+    ledcWrite(LED_PIN, (pow(2,ADC_RESOLUTION)));
+    /*for (int dutyCycle = 0; dutyCycle <= (pow(2,ADC_RESOLUTION)); dutyCycle++){
+      ledcWrite(LED_PIN, dutyCycle);
+      vTaskDelay(1 / portTICK_PERIOD_MS);
+    }
+    for (int dutyCycle = (pow(2,ADC_RESOLUTION)); dutyCycle >= 0; dutyCycle--){
+      ledcWrite(LED_PIN, dutyCycle);
+      vTaskDelay(1 / portTICK_PERIOD_MS);
+    }*/
+  }
+}
 
 
 
