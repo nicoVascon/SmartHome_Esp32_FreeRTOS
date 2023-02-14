@@ -211,8 +211,9 @@ int pos_lcd = 0;
 
 /* Declare a variable of type SemaphoreHandle_t.  This is used to reference the
 semaphore that is used to synchronize a task with an interrupt. */
-SemaphoreHandle_t xBinarySemaphore;
 SemaphoreHandle_t xSkywriter_Semaphore;
+SemaphoreHandle_t xLCD_Semaphore;
+SemaphoreHandle_t xMutex_lcd;
 
 /*Queues*/
 QueueHandle_t xGesturesQueue;
@@ -252,13 +253,15 @@ void setup() {
   xTaskCreatePinnedToCore(vAnalogGas, "Analog Gas Measurement Task", 2048, NULL, 1, NULL, 1);
   xTaskCreatePinnedToCore(vAmbientLight, "Ambient Light Measurement Task", 2048, NULL, 1, NULL, 1);
   analogReadResolution(ADC_RESOLUTION);
-
+  xMutex_lcd = xSemaphoreCreateMutex();
   /*Servo Task*/
   xTaskCreatePinnedToCore(vServo, "Servo motor", 1024, NULL, 2, NULL, 1);
 
-  /*LCD Task*/
-  xTaskCreatePinnedToCore(vLCDTask, "TFT Display", 4096, NULL, 1, NULL, 1);
-
+  vSemaphoreCreateBinary(xLCD_Semaphore);
+  if (xLCD_Semaphore != NULL) {
+    /*LCD Task*/
+    xTaskCreatePinnedToCore(vLCDTask, "TFT Display", 4096, NULL, 1, NULL, 1);
+  }
   /* Before a semaphore is used it must be explicitly created.  In this example
   a binary semaphore is created. */
   vSemaphoreCreateBinary(xSkywriter_Semaphore);
@@ -322,9 +325,7 @@ void vLCDTask(void *pvParameters) {
   const char *layout[3] = { "GAS ", "TEMP", "LUM " };
   int values_test[] = { 20, 24, 30 };
   char stringTime[8];
-  TickType_t xLastWakeTime;
-  const TickType_t xFrequency = 1000;
-  xLastWakeTime = xTaskGetTickCount();
+  int pos_lcd;
   Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_MOSI, TFT_CLK, TFT_RST, TFT_MISO);
   tft.begin();
   tft.fillScreen(ILI9341_BLACK);
@@ -337,25 +338,42 @@ void vLCDTask(void *pvParameters) {
   tft.fillRect(85, 30, 150, 190, ILI9341_WHITE);
   tft.fillRect(87, 32, 146, 186, ILI9341_BLACK);
   tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
+  tft.setTextSize(2);
+  tft.setCursor(15, 100);
+  tft.println(layout[position[pos_lcd][0]]);
+  tft.setCursor(255, 100);
+  tft.println(layout[position[pos_lcd][2]]);
+  tft.setTextSize(5);
+  tft.setCursor(95, 40);
+  tft.println(layout[position[pos_lcd][1]]);
   for (;;) {
+    if (xSemaphoreTake(xLCD_Semaphore, 1000 / portTICK_PERIOD_MS) == pdTRUE) {
+      xSemaphoreTake(xMutex_lcd, portMAX_DELAY);
+      {
+        pos_lcd = pos_lcd_global;
+      }
+      tft.setTextSize(2);
+      tft.setCursor(15, 100);
+      tft.println(layout[position[pos_lcd][0]]);
+      tft.setCursor(255, 100);
+      tft.println(layout[position[pos_lcd][2]]);
+      
+      tft.setTextSize(5);
+      tft.setCursor(95, 40);
+      tft.println(layout[position[pos_lcd][1]]);
+      xSemaphoreGive(xMutex_lcd);
+    }
     tft.setTextSize(2);
     tft.setCursor(10, 2);
     sprintf(stringTime, "%02d:%02d:%02d", rtc.getHour(true), rtc.getMinute(), rtc.getSecond());
     tft.println(stringTime);
-    tft.setCursor(15, 100);
-    tft.println(layout[position[pos_lcd][0]]);
-    tft.setCursor(255, 100);
-    tft.println(layout[position[pos_lcd][2]]);
     tft.setCursor(15, 125);
     tft.println(values_test[position[pos_lcd][0]]);
     tft.setCursor(255, 125);
     tft.println(values_test[position[pos_lcd][2]]);
     tft.setTextSize(5);
-    tft.setCursor(95, 40);
-    tft.println(layout[position[pos_lcd][1]]);
     tft.setCursor(95, 90);
     tft.println(values_test[position[pos_lcd][1]]);
-    vTaskDelayUntil(&xLastWakeTime, xFrequency / portTICK_PERIOD_MS);
   }
 }
 
@@ -466,25 +484,35 @@ void vSkywriter_Task(void *pvParameters) {
 void vGestureManager_Task(void *pvParameters) {
   char gesture;
   int pos_servo = 0;
-  /* As per most tasks, this task is implemented within an infinite loop. */
   for (;;) {
     if (xQueueReceive(xGesturesQueue, &gesture, portMAX_DELAY) != errQUEUE_EMPTY) {
       /* To get here the event must have occurred.  Process the event (in this
       case we just print out a message). */
       switch (gesture) {
         case 2:
-          if (pos_lcd == 0) {
-            pos_lcd = 2;
-          } else {
-            pos_lcd--;
+          xSemaphoreTake(xMutex_lcd, portMAX_DELAY);
+          {
+            if (pos_lcd_global == 0) {
+
+              pos_lcd_global = 2;
+            } else {
+              pos_lcd_global--;
+            }
           }
+          xSemaphoreGive(xMutex_lcd);
+          xSemaphoreGive(xLCD_Semaphore);
           break;
         case 3:
-          if (pos_lcd == 2) {
-            pos_lcd = 0;
-          } else {
-            pos_lcd++;
+          xSemaphoreTake(xMutex_lcd, portMAX_DELAY);
+          {
+            if (pos_lcd_global == 2) {
+              pos_lcd_global = 0;
+            } else {
+              pos_lcd_global++;
+            }
           }
+          xSemaphoreGive(xMutex_lcd);
+          xSemaphoreGive(xLCD_Semaphore);
           break;
         case 4:
           if (pos_servo != 4) {
@@ -501,8 +529,7 @@ void vGestureManager_Task(void *pvParameters) {
         default:
           Serial.println("Gesture - Garbage");
       }
-      Serial.printf("Gesture Manager Task - Gesture: %d\r\n", gesture);
-    }    
+    }
   }
 }
 
