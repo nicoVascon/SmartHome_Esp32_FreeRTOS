@@ -347,13 +347,34 @@ void vSkywriter_Task(void *pvParameters) {
 
 void vGestureManager_Task(void *pvParameters) {
   char gesture;
-
+  int temp;
   /* As per most tasks, this task is implemented within an infinite loop. */
   for (;;) {
     if (xQueueReceive(xGesturesQueue, &gesture, portMAX_DELAY) != errQUEUE_EMPTY) {
       /* To get here the event must have occurred.  Process the event (in this
       case we just print out a message). */
       Serial.printf("Gesture Manager Task - Gesture: %d\r\n", gesture);
+      switch (gesture){
+        case 2:
+          temp = pos[2];
+          pos[2] = pos[1];
+          pos[1] = pos[0];
+          pos[0]= temp;
+          break;
+        case 3:
+          temp = pos[0];
+          pos[0] = pos[1];
+          pos[1] = pos[2];
+          pos[2]=temp;
+          break;
+        case 4:
+        break;
+        case 5:
+        break;
+        default:
+          Serial.println("Gesture - Garbage");
+
+      }
     }
   }
 }
