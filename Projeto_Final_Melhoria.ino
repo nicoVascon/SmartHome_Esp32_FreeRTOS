@@ -170,9 +170,9 @@ const int durations[] = {
 //---------------- Actuators PINS -----------------//
 #define LED_PIN 13  //led
 //---------------- Sensors PINS -----------------//
-#define LM35_Pin 4     //temperature lm35
-#define GAS_PIN 15     //analog gas
-#define LIGHT_PIN 26    //ambient light sensor
+#define LM35_Pin 4    //temperature lm35
+#define GAS_PIN 15    //analog gas
+#define LIGHT_PIN 26  //ambient light sensor
 
 //---------------- ADDITIONAL CONSTANTS -----------------//
 #define ADC_RESOLUTION 12
@@ -209,7 +209,7 @@ void servopulse(int servopin, int myangle)  // define a servo pulse function
   digitalWrite(servopin, HIGH);       // set the level of servo pin as “high”
   delayMicroseconds(pulsewidth);      // delay microsecond of pulse width
   digitalWrite(servopin, LOW);        // set the level of servo pin as “low”
-  delay(20 - pulsewidth / 1000);
+  vTaskDelay((20 - pulsewidth / 1000) / portTICK_PERIOD_MS);
 }
 /*-----------------------------*/
 
@@ -260,7 +260,30 @@ void setup() {
   xTaskCreatePinnedToCore(vBuzzer_Task, "Buzzer Task", 2048, NULL, 1, NULL, 1);
 
   /*Servo Task*/
+  pinMode(servopin, OUTPUT);  // set servo pin as “output”
   xTaskCreatePinnedToCore(vServo, "Servo motor", 1024, NULL, 1, NULL, 1);
+}
+
+void vServo(void *pvParameters) {
+  int position = 0;
+  Serial.println("5iiiiiiiii Inicio");
+  for (;;) {
+    Serial.println("6iiiiiiiii for");
+    if (position == 0) {
+      for (int i = 0; i <= 50; i++)  // giving the servo time to rotate to commanded position
+      {
+        servopulse(servopin, 0);  // use the pulse function
+      }
+      position = 1;
+    } else {
+      for (int i = 0; i <= 50; i++)  // giving the servo time to rotate to commanded position
+      {
+        servopulse(servopin, 180);  // use the pulse function
+      }
+      position = 0;
+    }
+    vTaskDelay(3000 / portTICK_PERIOD_MS);
+  }
 }
 
 void vBuzzer_Task(void *pvParameters) {
@@ -336,14 +359,14 @@ void vAmbientLight(void *pvParameters) {
 
 void vLEDPWM(void *pvParameters) {
   int ledChannel = LED_PIN;
-  ledcSetup(ledChannel,FREQ,ADC_RESOLUTION);
-  ledcAttachPin(LED_PIN,ledChannel);
+  ledcSetup(ledChannel, FREQ, ADC_RESOLUTION);
+  ledcAttachPin(LED_PIN, ledChannel);
   for (;;) {
-    for (int dutyCycle = 0; dutyCycle <= (pow(2,ADC_RESOLUTION)); dutyCycle += 40){
+    for (int dutyCycle = 0; dutyCycle <= (pow(2, ADC_RESOLUTION)); dutyCycle += 40) {
       ledcWrite(LED_PIN, dutyCycle);
       vTaskDelay(10 / portTICK_PERIOD_MS);
     }
-    for (int dutyCycle = (pow(2,ADC_RESOLUTION)); dutyCycle >= 0; dutyCycle -= 40){
+    for (int dutyCycle = (pow(2, ADC_RESOLUTION)); dutyCycle >= 0; dutyCycle -= 40) {
       ledcWrite(LED_PIN, dutyCycle);
       vTaskDelay(10 / portTICK_PERIOD_MS);
     }
