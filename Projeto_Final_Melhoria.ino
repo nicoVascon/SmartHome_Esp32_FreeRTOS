@@ -20,7 +20,7 @@ void servopulse(int servopin, int myangle)  // define a servo pulse function
   digitalWrite(servopin, HIGH);       // set the level of servo pin as “high”
   delayMicroseconds(pulsewidth);      // delay microsecond of pulse width
   digitalWrite(servopin, LOW);        // set the level of servo pin as “low”
-  delay(20 - pulsewidth / 1000);
+  vTaskDelay((20 - pulsewidth / 1000) / portTICK_PERIOD_MS);
 }
 void setup() {
   pinMode(servopin, OUTPUT);  // set servo pin as “output”
@@ -30,18 +30,20 @@ void setup() {
 }
 
 void vServo(void *pvParameters) {
+  int position = 0;
   for (;;) {
-    val = Serial.read();  // read serial port value
-    if (val >= '0' && val <= '9') {
-      val = val - '0';        // convert characteristic quantity to numerical variable
-      val = val * (180 / 9);  // convert number to angle
-      Serial.print("moving servo to ");
-      Serial.print(val, DEC);
-      Serial.println();
+    if (position == 0) {
       for (int i = 0; i <= 50; i++)  // giving the servo time to rotate to commanded position
       {
-        servopulse(servopin, val);  // use the pulse function
+        servopulse(servopin, 0);  // use the pulse function
       }
+      position = 1;
+    } else {
+      for (int i = 0; i <= 50; i++)  // giving the servo time to rotate to commanded position
+      {
+        servopulse(servopin, 180);  // use the pulse function
+      }
+      position = 0;
     }
     vTaskDelay(3000 / portTICK_PERIOD_MS);
   }
