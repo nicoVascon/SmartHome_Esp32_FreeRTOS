@@ -8,6 +8,7 @@
 #include "nvs_flash.h"
 #include "esp_task_wdt.h"
 #include <ESP32Time.h>
+#include "esp_freertos_hooks.h"
 
 #include <Wire.h>
 #include "skywriter.h"
@@ -173,9 +174,9 @@ const int durations[] = {
 //---------------- Actuators PINS -----------------//
 #define LED_PIN 13  //led
 //---------------- Sensors PINS -----------------//
-#define LM35_Pin 4     //temperature lm35
-#define GAS_PIN 15     //analog gas
-#define LIGHT_PIN 26    //ambient light sensor
+#define LM35_Pin 4    //temperature lm35
+#define GAS_PIN 15    //analog gas
+#define LIGHT_PIN 26  //ambient light sensor
 
 //---------------- ADDITIONAL CONSTANTS -----------------//
 #define ADC_RESOLUTION 12
@@ -212,6 +213,11 @@ SemaphoreHandle_t xSkywriter_Semaphore;
 /*Queues*/
 QueueHandle_t xGesturesQueue;
 
+/* A variable that is incremented by the idle task hook function. */
+volatile unsigned long ulIdleCycleCount = 0UL;
+
+void vBrain_Task(void *pvParameters);
+
 void setup() {
   Serial.begin(9600);
 
@@ -219,8 +225,11 @@ void setup() {
 
   Serial.println("Hello world!");
 
+  /*Idle Hook Task Definition*/
+  esp_register_freertos_idle_hook(my_vApplicationIdleHook);
+
   /*Sensors Tasks*/
-  xTaskCreatePinnedToCore(vLEDPWM, "PWM for LED Task", 1024, NULL, 1, NULL, 1);
+  xTaskCreatePinnedToCore(vLEDPWM, "PWM LED Task", 1024, NULL, 1, NULL, 1);
   xTaskCreatePinnedToCore(vTemperature, "Temperature Measurement Task", 1024, NULL, 1, NULL, 1);
   xTaskCreatePinnedToCore(vAnalogGas, "Analog Gas Measurement Task", 2048, NULL, 1, NULL, 1);
   xTaskCreatePinnedToCore(vAmbientLight, "Ambient Light Measurement Task", 2048, NULL, 1, NULL, 1);
@@ -247,19 +256,24 @@ void setup() {
                             NULL,             /* We are not using the task handle. */
                             1);               /* Core where the task should run */
 
-    /* Set up the initial interrupt */
-    Skywriter.begin(PIN_TRFD, PIN_RESET);
-    Skywriter.onGesture(gesture);
-
-    // pinMode(PIN_TRFD, INPUT_PULLDOWN);
-    attachInterrupt(digitalPinToInterrupt(PIN_TRFD), &my_poll, FALLING);
-    // attachInterrupt(digitalPinToInterrupt(PIN_TRFD), &my_poll, FALLING);
-
     /* Create the other task in exactly the same way. */
     xTaskCreatePinnedToCore(vGestureManager_Task, "Gesture Manager", 2048, NULL, 1, NULL, 1);
   }
   /* Create Buzzer Task. */
   xTaskCreatePinnedToCore(vBuzzer_Task, "Buzzer Task", 2048, NULL, 1, NULL, 1);
+  /* Create Brain Task. */
+  xTaskCreatePinnedToCore(vBrain_Task, "Brain Task", 2048, NULL, 2, NULL, 1);
+}
+
+void vBrain_Task(void *pvParameters) {
+  TickType_t xLastWakeTime;
+  const TickType_t xFrequency = 1000;
+  for (;;) {
+    xLastWakeTime = xTaskGetTickCount();
+    Serial.printf("Idle:%lu\n", ulIdleCycleCount);
+    ulIdleCycleCount = 0UL;
+    vTaskDelayUntil(&xLastWakeTime, xFrequency / portTICK_PERIOD_MS);
+  }
 }
 
 void vLCDTask(void *pvParameters) {
@@ -284,9 +298,7 @@ void vLCDTask(void *pvParameters) {
   tft.fillRect(85, 30, 150, 190, ILI9341_WHITE);
   tft.fillRect(87, 32, 146, 186, ILI9341_BLACK);
   tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
-  Serial.println("Oi Ini");
   for (;;) {
-    Serial.println("Oi for......");
     tft.setTextSize(2);
     tft.setCursor(10, 2);
     sprintf(stringTime, "%02d:%02d:%02d", rtc.getHour(true), rtc.getMinute(),rtc.getSecond());
@@ -304,7 +316,7 @@ void vLCDTask(void *pvParameters) {
     tft.println(layout[pos[1]]);
     tft.setCursor(95, 90);
     tft.println(values_test[pos[1]]);
-    vTaskDelayUntil( &xLastWakeTime, xFrequency );
+    vTaskDelayUntil(&xLastWakeTime, xFrequency / portTICK_PERIOD_MS);
   }
 }
 
@@ -399,6 +411,9 @@ void vSkywriter_Task(void *pvParameters) {
   Skywriter.begin(PIN_TRFD, PIN_RESET);
   Skywriter.onGesture(gesture);
 
+  /* Set up the initial interrupt */
+  attachInterrupt(digitalPinToInterrupt(PIN_TRFD), &my_poll, FALLING);
+
   xSemaphoreTake(xSkywriter_Semaphore, 0);
   /* As per most tasks, this task is implemented in an infinite loop. */
   for (;;) {
@@ -434,6 +449,17 @@ void gesture(unsigned char type) {
 void handle_xyz(unsigned int x, unsigned int y, unsigned int z) {
   Serial.printf("X: %d; Y: %d; Z: %d\r\n", x, y, z);
 }
+
+
+/* Idle hook functions MUST be called vApplicationIdleHook(), take no parameters,
+and return void. */
+//extern "C"{ // FreeRTOS expects C linkage
+bool my_vApplicationIdleHook(void) {
+  /* This hook function does nothing but increment a counter. */
+  ulIdleCycleCount++;
+  return true;
+}
+//}
 
 /* Tone Library Implementation */
 
@@ -499,7 +525,6 @@ static int my_tone_init() {
     }
     log_v("Tone task created");
   }
-  Serial.println("Oii");
   return 1;  // OK
 }
 
