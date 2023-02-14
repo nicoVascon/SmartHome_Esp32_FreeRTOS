@@ -229,13 +229,8 @@ void setup() {
                             NULL,             /* We are not using the task handle. */
                             1);               /* Core where the task should run */
 
-    /* Set up the initial interrupt */
-    Skywriter.begin(PIN_TRFD, PIN_RESET);
-    Skywriter.onGesture(gesture);
-
     // pinMode(PIN_TRFD, INPUT_PULLDOWN);
     attachInterrupt(digitalPinToInterrupt(PIN_TRFD), &my_poll, FALLING);
-    // attachInterrupt(digitalPinToInterrupt(PIN_TRFD), &my_poll, FALLING);
 
     /* Create the other task in exactly the same way. */
     xTaskCreatePinnedToCore(vGestureManager_Task, "Gesture Manager", 2048, NULL, 1, NULL, 1);
@@ -334,7 +329,6 @@ void vLEDPWM(void *pvParameters) {
 void vSkywriter_Task(void *pvParameters) {
   Skywriter.begin(PIN_TRFD, PIN_RESET);
   Skywriter.onGesture(gesture);
-
   xSemaphoreTake(xSkywriter_Semaphore, 0);
   /* As per most tasks, this task is implemented in an infinite loop. */
   for (;;) {
@@ -358,18 +352,16 @@ void vGestureManager_Task(void *pvParameters) {
   }
 }
 
-void loop() {
-  vTaskDelete(NULL);
-}
 
 void gesture(unsigned char type) {
   char last_gesture = type;
   xQueueSendToBack(xGesturesQueue, &last_gesture, 0);
 }
 
-void handle_xyz(unsigned int x, unsigned int y, unsigned int z) {
-  Serial.printf("X: %d; Y: %d; Z: %d\r\n", x, y, z);
+void loop() {
+  vTaskDelete(NULL);
 }
+
 
 /* Tone Library Implementation */
 
