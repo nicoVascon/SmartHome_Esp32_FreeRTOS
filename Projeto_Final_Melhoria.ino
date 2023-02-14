@@ -1,3 +1,5 @@
+#include <Adafruit_ILI9341.h>
+
 #include "Arduino.h"
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
@@ -5,6 +7,7 @@
 #include "esp_system.h"
 #include "nvs_flash.h"
 #include "esp_task_wdt.h"
+#include "ESP32Time"
 
 #include <Wire.h>
 #include "skywriter.h"
@@ -178,6 +181,17 @@ const int durations[] = {
 #define ADC_RESOLUTION 12
 #define FREQ 5000
 
+//---------------- PINS -----------------//
+// Set Adafruit tft pins
+#define TFT_DC 33
+#define TFT_CS 3
+#define TFT_MOSI 23
+#define TFT_CLK 18
+#define TFT_RST 1
+#define TFT_MISO 19
+
+
+
 /*IRS*/
 void my_poll(void);
 
@@ -188,6 +202,7 @@ void vLEDPWM(void *pvParameters);
 void vTemperature(void *pvParameters);
 void vAnalogGas(void *pvParameters);
 void vAmbientLight(void *pvParameters);
+void vLCDTask(void *pvParameters);
 
 /* Declare a variable of type SemaphoreHandle_t.  This is used to reference the
 semaphore that is used to synchronize a task with an interrupt. */
@@ -210,6 +225,9 @@ void setup() {
   xTaskCreatePinnedToCore(vAnalogGas, "Analog Gas Measurement Task", 2048, NULL, 1, NULL, 1);
   xTaskCreatePinnedToCore(vAmbientLight, "Ambient Light Measurement Task", 2048, NULL, 1, NULL, 1);
   analogReadResolution(ADC_RESOLUTION);
+
+  /*LCD Task*/
+  xTaskCreatePinnedToCore(vLCDTask, "TFT Display", 1024, NULL, 1, NULL, 1);
 
   /* Before a semaphore is used it must be explicitly created.  In this example
   a binary semaphore is created. */
@@ -242,6 +260,50 @@ void setup() {
   }
   /* Create Buzzer Task. */
   xTaskCreatePinnedToCore(vBuzzer_Task, "Buzzer Task", 2048, NULL, 1, NULL, 1);
+}
+
+void vLCDTask(void *pvParameters) {
+  ESP32Time rtc(3600);  // offset in seconds GMT+1
+  rtc.setTime(10, 50, 8, 17, 1, 2021);  // 17th Jan 2021 15:24:30
+  int pos[] = {0,1,2};
+  const char* layout[3] = {"GAS ", "TEMP", "LUM "};
+  int values_test[] ={20,24,30};
+  char stringTime[8];
+  TickType_t xLastWakeTime;
+  const TickType_t xFrequency = 1000;
+  xLastWakeTime = xTaskGetTickCount();
+  Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_MOSI, TFT_CLK, TFT_RST, TFT_MISO);
+  tft.begin();
+  tft.fillScreen(ILI9341_BLACK);
+  tft.setRotation(1);
+  tft.setTextSize(2);
+  tft.fillRect(5, 90, 70, 60, ILI9341_WHITE);
+  tft.fillRect(7, 92, 66, 56, ILI9341_BLACK);
+  tft.fillRect(245, 90, 70, 60, ILI9341_WHITE);
+  tft.fillRect(247, 92, 66, 56, ILI9341_BLACK);
+  tft.fillRect(85, 30, 150, 190, ILI9341_WHITE);
+  tft.fillRect(87, 32, 146, 186, ILI9341_BLACK);
+  tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
+  for (;;) {
+    tft.setTextSize(2);
+    tft.setCursor(10, 2);
+    sprintf(stringTime, "%02d:%02d:%02d", rtc.getHour(true), rtc.getMinute(),rtc.getSecond());
+    tft.println(stringTime);
+    tft.setCursor(15, 100);
+    tft.println(layout[pos[0]]);
+    tft.setCursor(255, 100);
+    tft.println(layout[pos[2]]);
+    tft.setCursor(15, 125);
+    tft.println(values_test[pos[0]]);
+    tft.setCursor(255, 125);
+    tft.println(values_test[pos[2]]);
+    tft.setTextSize(5);
+    tft.setCursor(95, 40);
+    tft.println(layout[pos[1]]);
+    tft.setCursor(95, 90);
+    tft.println(values_test[pos[1]]);
+    vTaskDelayUntil( &xLastWakeTime, xFrequency );
+  }
 }
 
 void vBuzzer_Task(void *pvParameters) {
