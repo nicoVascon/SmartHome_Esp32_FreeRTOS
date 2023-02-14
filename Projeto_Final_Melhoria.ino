@@ -1,6 +1,6 @@
 void vGestureManager_Task(void *pvParameters) {
   char gesture;
-
+  int pos_servo = 0;
   /* As per most tasks, this task is implemented within an infinite loop. */
   for (;;) {
     if (xQueueReceive(xGesturesQueue, &gesture, portMAX_DELAY) != errQUEUE_EMPTY) {
@@ -22,16 +22,16 @@ void vGestureManager_Task(void *pvParameters) {
           }
           break;
         case 4:
-          if (pos_servo == 4) {
-            break;
+          if (pos_servo != 4) {
+            pos_servo++;
+            xQueueSendToBack(xServoQueue, &pos_servo, 0);
           }
-          pos_servo++;
           break;
         case 5:
-          if (pos_servo == 0) {
-            break;
+          if (pos_servo != 0) {
+            pos_servo--;
+            xQueueSendToBack(xServoQueue, &pos_servo, 0);
           }
-          pos_servo--;
           break;
         default:
           Serial.println("Gesture - Garbage");
