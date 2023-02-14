@@ -190,8 +190,10 @@ const int durations[] = {
 #define TFT_CLK 18
 #define TFT_RST 5
 #define TFT_MISO 19
+// Servo Pins
+#define SERVO_PIN 2 //Servo motor
 
-
+void vServo(void *pvParameters);
 
 /*IRS*/
 void my_poll(void);
@@ -216,6 +218,19 @@ SemaphoreHandle_t xSkywriter_Semaphore;
 QueueHandle_t xGesturesQueue;
 QueueHandle_t xServoQueue;
 
+/*----------------Servo-----------------*/
+
+
+void servopulse(int myangle)  // define a servo pulse function
+{
+  int pulsewidth = (myangle * 11) + 500;  // convert angle to 500-2480 pulse width
+  digitalWrite(SERVO_PIN, HIGH);       // set the level of servo pin as “high”
+  delayMicroseconds(pulsewidth);      // delay microsecond of pulse width
+  digitalWrite(SERVO_PIN, LOW);        // set the level of servo pin as “low”
+  vTaskDelay((20 - pulsewidth / 1000) / portTICK_PERIOD_MS);
+}
+/*-----------------------------*/
+
 /* A variable that is incremented by the idle task hook function. */
 volatile unsigned long ulIdleCycleCount = 0UL;
 
@@ -237,6 +252,9 @@ void setup() {
   xTaskCreatePinnedToCore(vAnalogGas, "Analog Gas Measurement Task", 2048, NULL, 1, NULL, 1);
   xTaskCreatePinnedToCore(vAmbientLight, "Ambient Light Measurement Task", 2048, NULL, 1, NULL, 1);
   analogReadResolution(ADC_RESOLUTION);
+
+  /*Servo Task*/
+  xTaskCreatePinnedToCore(vServo, "Servo motor", 1024, NULL, 2, NULL, 1);
 
   /*LCD Task*/
   xTaskCreatePinnedToCore(vLCDTask, "TFT Display", 4096, NULL, 1, NULL, 1);
@@ -267,6 +285,23 @@ void setup() {
   xTaskCreatePinnedToCore(vBuzzer_Task, "Buzzer Task", 2048, NULL, 1, NULL, 1);
   /* Create Brain Task. */
   xTaskCreatePinnedToCore(vBrain_Task, "Brain Task", 2048, NULL, 2, NULL, 1);
+}
+
+void vServo(void *pvParameters) {
+  int pos_servo;
+  pinMode(SERVO_PIN, OUTPUT);    // set servo pin as “output”
+  for (int i = 0; i <= 15; i++)  // giving the servo time to rotate to commanded position
+  {
+    servopulse(0);  //inicialização do servo para o valor atual
+  }
+  for (;;) {
+    if (xQueueReceive(xServoQueue, &pos_servo, portMAX_DELAY) != errQUEUE_EMPTY) {
+      for (int i = 0; i <= 15; i++)  // giving the servo time to rotate to commanded position
+      {
+        servopulse(180 * pos_servo / 4);  // use the pulse function
+      }
+    }
+  }
 }
 
 void vBrain_Task(void *pvParameters) {
