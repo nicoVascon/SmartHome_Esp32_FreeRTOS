@@ -6,10 +6,9 @@
 
 
 void vServo(void *pvParameters);
-
+QueueHandle_t xServoQueue;
 
 /*----------------Servo-----------------*/
-int pos_servo = 0; // initial position of servo
 
 
 void servopulse(int myangle)  // define a servo pulse function
@@ -25,16 +24,22 @@ void servopulse(int myangle)  // define a servo pulse function
 void setup() {
   /*Servo Task*/
   xTaskCreatePinnedToCore(vServo, "Servo motor", 1024, NULL, 2, NULL, 1);
+  xServoQueue = xQueueCreate(5, sizeof(int));
 }
 
 void vServo(void *pvParameters) {
-  pinMode(SERVO_PIN, OUTPUT);  // set servo pin as “output”
+  int pos_servo;
+  pinMode(SERVO_PIN, OUTPUT);    // set servo pin as “output”
+  for (int i = 0; i <= 15; i++)  // giving the servo time to rotate to commanded position
+  {
+    servopulse(0);  //inicialização do servo para o valor atual
+  }
   for (;;) {
-    for (int i = 0; i <= 50; i++)  // giving the servo time to rotate to commanded position
-    {
-      servopulse(180*pos_servo/4);  // use the pulse function
+    if (xQueueReceive(xServoQueue, &pos_servo, portMAX_DELAY) != errQUEUE_EMPTY) {
+      for (int i = 0; i <= 15; i++)  // giving the servo time to rotate to commanded position
+      {
+        servopulse(180 * pos_servo / 4);  // use the pulse function
+      }
     }
-    vTaskDelay(3000 / portTICK_PERIOD_MS);
   }
 }
-
