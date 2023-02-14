@@ -205,6 +205,8 @@ void vAnalogGas(void *pvParameters);
 void vAmbientLight(void *pvParameters);
 void vLCDTask(void *pvParameters);
 
+int pos_lcd = 0;
+
 /* Declare a variable of type SemaphoreHandle_t.  This is used to reference the
 semaphore that is used to synchronize a task with an interrupt. */
 SemaphoreHandle_t xBinarySemaphore;
@@ -277,11 +279,11 @@ void vBrain_Task(void *pvParameters) {
 }
 
 void vLCDTask(void *pvParameters) {
-  ESP32Time rtc(3600);  // offset in seconds GMT+1
+  ESP32Time rtc(3600);                  // offset in seconds GMT+1
   rtc.setTime(10, 50, 8, 17, 1, 2021);  // 17th Jan 2021 15:24:30
-  int pos[] = {0,1,2};
-  const char* layout[3] = {"GAS ", "TEMP", "LUM "};
-  int values_test[] ={20,24,30};
+  const int position[3][3] = { { 0, 1, 2 }, { 1, 2, 0 }, { 2, 0, 1 } };
+  const char *layout[3] = { "GAS ", "TEMP", "LUM " };
+  int values_test[] = { 20, 24, 30 };
   char stringTime[8];
   TickType_t xLastWakeTime;
   const TickType_t xFrequency = 1000;
@@ -304,18 +306,18 @@ void vLCDTask(void *pvParameters) {
     sprintf(stringTime, "%02d:%02d:%02d", rtc.getHour(true), rtc.getMinute(),rtc.getSecond());
     tft.println(stringTime);
     tft.setCursor(15, 100);
-    tft.println(layout[pos[0]]);
+    tft.println(layout[position[pos_lcd][0]]);
     tft.setCursor(255, 100);
-    tft.println(layout[pos[2]]);
+    tft.println(layout[position[pos_lcd][2]]);
     tft.setCursor(15, 125);
-    tft.println(values_test[pos[0]]);
+    tft.println(values_test[position[pos_lcd][0]]);
     tft.setCursor(255, 125);
-    tft.println(values_test[pos[2]]);
+    tft.println(values_test[position[pos_lcd][2]]);
     tft.setTextSize(5);
     tft.setCursor(95, 40);
-    tft.println(layout[pos[1]]);
+    tft.println(layout[position[pos_lcd][1]]);
     tft.setCursor(95, 90);
-    tft.println(values_test[pos[1]]);
+    tft.println(values_test[position[pos_lcd][1]]);
     vTaskDelayUntil(&xLastWakeTime, xFrequency / portTICK_PERIOD_MS);
   }
 }
