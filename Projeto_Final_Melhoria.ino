@@ -9,15 +9,170 @@
 #include <Wire.h>
 #include "skywriter.h"
 
+/*-------------Tone Library Structures and Variables-------------*/
+typedef enum {
+  TONE_START,
+  TONE_END,
+  TONE_SET_CHANNEL
+} tone_cmd_t;
+
+typedef struct {
+  tone_cmd_t tone_cmd;
+  uint8_t pin;
+  unsigned int frequency;
+  unsigned long duration;
+  uint8_t channel;
+} tone_msg_t;
+static TaskHandle_t _my_tone_task = NULL;
+static QueueHandle_t _tone_queue = NULL;
+static uint8_t _channel = 0;
+/*--------------------------------------------------*/
+
+/*-------------Buzzer and Melody values-------------*/
+
+// Define pin 10 for buzzer, you can use any other digital pins (Pin 0-13)
+const int buzzer = 32;
+
+// Change to 0.5 for a slower version of the song, 1.25 for a faster version
+const float songSpeed = 1.0;
+
+// Defining frequency of each music note
+#define NOTE_C4 262
+#define NOTE_D4 294
+#define NOTE_E4 330
+#define NOTE_F4 349
+#define NOTE_G4 392
+#define NOTE_A4 440
+#define NOTE_B4 494
+#define NOTE_C5 523
+#define NOTE_D5 587
+#define NOTE_E5 659
+#define NOTE_F5 698
+#define NOTE_G5 784
+#define NOTE_A5 880
+#define NOTE_B5 988
+
+// Music notes of the song, 0 is a rest/pulse
+const int notes[] = {
+  NOTE_E4, NOTE_G4, NOTE_A4, NOTE_A4, 0,
+  NOTE_A4, NOTE_B4, NOTE_C5, NOTE_C5, 0,
+  NOTE_C5, NOTE_D5, NOTE_B4, NOTE_B4, 0,
+  NOTE_A4, NOTE_G4, NOTE_A4, 0,
+
+  NOTE_E4, NOTE_G4, NOTE_A4, NOTE_A4, 0,
+  NOTE_A4, NOTE_B4, NOTE_C5, NOTE_C5, 0,
+  NOTE_C5, NOTE_D5, NOTE_B4, NOTE_B4, 0,
+  NOTE_A4, NOTE_G4, NOTE_A4, 0,
+
+  NOTE_E4, NOTE_G4, NOTE_A4, NOTE_A4, 0,
+  NOTE_A4, NOTE_C5, NOTE_D5, NOTE_D5, 0,
+  NOTE_D5, NOTE_E5, NOTE_F5, NOTE_F5, 0,
+  NOTE_E5, NOTE_D5, NOTE_E5, NOTE_A4, 0,
+
+  NOTE_A4, NOTE_B4, NOTE_C5, NOTE_C5, 0,
+  NOTE_D5, NOTE_E5, NOTE_A4, 0,
+  NOTE_A4, NOTE_C5, NOTE_B4, NOTE_B4, 0,
+  NOTE_C5, NOTE_A4, NOTE_B4, 0,
+
+  NOTE_A4, NOTE_A4,
+  //Repeat of first part
+  NOTE_A4, NOTE_B4, NOTE_C5, NOTE_C5, 0,
+  NOTE_C5, NOTE_D5, NOTE_B4, NOTE_B4, 0,
+  NOTE_A4, NOTE_G4, NOTE_A4, 0,
+
+  NOTE_E4, NOTE_G4, NOTE_A4, NOTE_A4, 0,
+  NOTE_A4, NOTE_B4, NOTE_C5, NOTE_C5, 0,
+  NOTE_C5, NOTE_D5, NOTE_B4, NOTE_B4, 0,
+  NOTE_A4, NOTE_G4, NOTE_A4, 0,
+
+  NOTE_E4, NOTE_G4, NOTE_A4, NOTE_A4, 0,
+  NOTE_A4, NOTE_C5, NOTE_D5, NOTE_D5, 0,
+  NOTE_D5, NOTE_E5, NOTE_F5, NOTE_F5, 0,
+  NOTE_E5, NOTE_D5, NOTE_E5, NOTE_A4, 0,
+
+  NOTE_A4, NOTE_B4, NOTE_C5, NOTE_C5, 0,
+  NOTE_D5, NOTE_E5, NOTE_A4, 0,
+  NOTE_A4, NOTE_C5, NOTE_B4, NOTE_B4, 0,
+  NOTE_C5, NOTE_A4, NOTE_B4, 0,
+  //End of Repeat
+
+  NOTE_E5, 0, 0, NOTE_F5, 0, 0,
+  NOTE_E5, NOTE_E5, 0, NOTE_G5, 0, NOTE_E5, NOTE_D5, 0, 0,
+  NOTE_D5, 0, 0, NOTE_C5, 0, 0,
+  NOTE_B4, NOTE_C5, 0, NOTE_B4, 0, NOTE_A4,
+
+  NOTE_E5, 0, 0, NOTE_F5, 0, 0,
+  NOTE_E5, NOTE_E5, 0, NOTE_G5, 0, NOTE_E5, NOTE_D5, 0, 0,
+  NOTE_D5, 0, 0, NOTE_C5, 0, 0,
+  NOTE_B4, NOTE_C5, 0, NOTE_B4, 0, NOTE_A4
+};
+
+// Durations (in ms) of each music note of the song
+// Quarter Note is 250 ms when songSpeed = 1.0
+const int durations[] = {
+  125, 125, 250, 125, 125,
+  125, 125, 250, 125, 125,
+  125, 125, 250, 125, 125,
+  125, 125, 375, 125,
+
+  125, 125, 250, 125, 125,
+  125, 125, 250, 125, 125,
+  125, 125, 250, 125, 125,
+  125, 125, 375, 125,
+
+  125, 125, 250, 125, 125,
+  125, 125, 250, 125, 125,
+  125, 125, 250, 125, 125,
+  125, 125, 125, 250, 125,
+
+  125, 125, 250, 125, 125,
+  250, 125, 250, 125,
+  125, 125, 250, 125, 125,
+  125, 125, 375, 375,
+
+  250, 125,
+  //Rpeat of First Part
+  125, 125, 250, 125, 125,
+  125, 125, 250, 125, 125,
+  125, 125, 375, 125,
+
+  125, 125, 250, 125, 125,
+  125, 125, 250, 125, 125,
+  125, 125, 250, 125, 125,
+  125, 125, 375, 125,
+
+  125, 125, 250, 125, 125,
+  125, 125, 250, 125, 125,
+  125, 125, 250, 125, 125,
+  125, 125, 125, 250, 125,
+
+  125, 125, 250, 125, 125,
+  250, 125, 250, 125,
+  125, 125, 250, 125, 125,
+  125, 125, 375, 375,
+  //End of Repeat
+
+  250, 125, 375, 250, 125, 375,
+  125, 125, 125, 125, 125, 125, 125, 125, 375,
+  250, 125, 375, 250, 125, 375,
+  125, 125, 125, 125, 125, 500,
+
+  250, 125, 375, 250, 125, 375,
+  125, 125, 125, 125, 125, 125, 125, 125, 375,
+  250, 125, 375, 250, 125, 375,
+  125, 125, 125, 125, 125, 500
+};
+/*--------------------------------------------------*/
+
 #define PIN_TRFD 27
 #define PIN_RESET 17
 
 //---------------- Actuators PINS -----------------//
 #define LED_PIN 13  //led
 //---------------- Sensors PINS -----------------//
-#define LM35_Pin 4     //temperature lm35
-#define GAS_PIN 15     //analog gas
-#define LIGHT_PIN 26    //ambient light sensor
+#define LM35_Pin 4    //temperature lm35
+#define GAS_PIN 15    //analog gas
+#define LIGHT_PIN 26  //ambient light sensor
 
 //---------------- ADDITIONAL CONSTANTS -----------------//
 #define ADC_RESOLUTION 12
@@ -85,6 +240,28 @@ void setup() {
     /* Create the other task in exactly the same way. */
     xTaskCreatePinnedToCore(vGestureManager_Task, "Gesture Manager", 2048, NULL, 1, NULL, 1);
   }
+  /* Create Buzzer Task. */
+  xTaskCreatePinnedToCore(vBuzzer_Task, "Buzzer Task", 2048, NULL, 1, NULL, 1);
+}
+
+void vBuzzer_Task(void *pvParameters) {
+  const int totalNotes = sizeof(notes) / sizeof(int);
+  for (;;) {
+    // Loop through each note
+    for (int i = 0; i < totalNotes; i++) {
+      int currentNote = notes[i];
+      float wait = durations[i] / songSpeed;
+      // Play tone if currentNote is not 0 frequency, otherwise pause (my_noTone)
+      if (currentNote != 0) {
+        my_tone(buzzer, notes[i], wait);  // tone(pin, frequency, duration)
+      } else {
+        my_noTone(buzzer);
+      }
+      // delay is used to wait for tone to finish playing before moving to next loop
+      vTaskDelay(wait / portTICK_PERIOD_MS);
+    }
+    vTaskDelay(10000 / portTICK_PERIOD_MS);
+  }
 }
 
 void my_poll(void) {
@@ -140,14 +317,14 @@ void vAmbientLight(void *pvParameters) {
 
 void vLEDPWM(void *pvParameters) {
   int ledChannel = LED_PIN;
-  ledcSetup(ledChannel,FREQ,ADC_RESOLUTION);
-  ledcAttachPin(LED_PIN,ledChannel);
+  ledcSetup(ledChannel, FREQ, ADC_RESOLUTION);
+  ledcAttachPin(LED_PIN, ledChannel);
   for (;;) {
-    for (int dutyCycle = 0; dutyCycle <= (pow(2,ADC_RESOLUTION)); dutyCycle += 40){
+    for (int dutyCycle = 0; dutyCycle <= (pow(2, ADC_RESOLUTION)); dutyCycle += 40) {
       ledcWrite(LED_PIN, dutyCycle);
       vTaskDelay(10 / portTICK_PERIOD_MS);
     }
-    for (int dutyCycle = (pow(2,ADC_RESOLUTION)); dutyCycle >= 0; dutyCycle -= 40){
+    for (int dutyCycle = (pow(2, ADC_RESOLUTION)); dutyCycle >= 0; dutyCycle -= 40) {
       ledcWrite(LED_PIN, dutyCycle);
       vTaskDelay(10 / portTICK_PERIOD_MS);
     }
@@ -166,7 +343,6 @@ void vSkywriter_Task(void *pvParameters) {
     Skywriter.poll();
   }
 }
-/*-----------------------------------------------------------*/
 
 void vGestureManager_Task(void *pvParameters) {
   char gesture;
@@ -192,4 +368,119 @@ void gesture(unsigned char type) {
 
 void handle_xyz(unsigned int x, unsigned int y, unsigned int z) {
   Serial.printf("X: %d; Y: %d; Z: %d\r\n", x, y, z);
+}
+
+/* Tone Library Implementation */
+
+static void my_tone_task(void *) {
+  tone_msg_t tone_msg;
+  while (1) {
+    xQueueReceive(_tone_queue, &tone_msg, portMAX_DELAY);
+    switch (tone_msg.tone_cmd) {
+      case TONE_START:
+        log_d("Task received from queue TONE_START: _pin=%d, frequency=%u Hz, duration=%lu ms", tone_msg.pin, tone_msg.frequency, tone_msg.duration);
+
+        log_d("Setup LED controll on channel %d", _channel);
+        ledcAttachPin(tone_msg.pin, _channel);
+        ledcWriteTone(_channel, tone_msg.frequency);
+
+        if (tone_msg.duration) {
+          vTaskDelay(tone_msg.duration / portTICK_PERIOD_MS);
+          ledcDetachPin(tone_msg.pin);
+          ledcWriteTone(_channel, 0);
+        }
+        break;
+
+      case TONE_END:
+        log_d("Task received from queue TONE_END: pin=%d", tone_msg.pin);
+        ledcDetachPin(tone_msg.pin);
+        ledcWriteTone(_channel, 0);
+        break;
+
+      case TONE_SET_CHANNEL:
+        log_d("Task received from queue TONE_SET_CHANNEL: channel=%d", tone_msg.channel);
+        _channel = tone_msg.channel;
+        break;
+
+      default:;  // do nothing
+    }            // switch
+  }              // infinite loop
+}
+
+static int my_tone_init() {
+  if (_tone_queue == NULL) {
+    log_v("Creating tone queue");
+    _tone_queue = xQueueCreate(128, sizeof(tone_msg_t));
+    if (_tone_queue == NULL) {
+      log_e("Could not create tone queue");
+      return 0;  // ERR
+    }
+    log_v("Tone queue created");
+  }
+
+  if (_my_tone_task == NULL) {
+    log_v("Creating tone task");
+    xTaskCreate(
+      my_tone_task,   // Function to implement the task
+      "toneTask",     // Name of the task
+      3500,           // Stack size in words
+      NULL,           // Task input parameter
+      1,              // Priority of the task
+      &_my_tone_task  // Task handle.
+    );
+    if (_my_tone_task == NULL) {
+      log_e("Could not create tone task");
+      return 0;  // ERR
+    }
+    log_v("Tone task created");
+  }
+  Serial.println("Oii");
+  return 1;  // OK
+}
+
+void my_setToneChannel(uint8_t channel) {
+  log_d("channel=%d", channel);
+  if (my_tone_init()) {
+    tone_msg_t tone_msg = {
+      .tone_cmd = TONE_SET_CHANNEL,
+      .pin = 0,        // Ignored
+      .frequency = 0,  // Ignored
+      .duration = 0,   // Ignored
+      .channel = channel
+    };
+    xQueueSend(_tone_queue, &tone_msg, portMAX_DELAY);
+  }
+}
+
+void my_noTone(uint8_t _pin) {
+  log_d("my_noTone was called");
+  if (my_tone_init()) {
+    tone_msg_t tone_msg = {
+      .tone_cmd = TONE_END,
+      .pin = _pin,
+      .frequency = 0,  // Ignored
+      .duration = 0,   // Ignored
+      .channel = 0     // Ignored
+    };
+    xQueueSend(_tone_queue, &tone_msg, portMAX_DELAY);
+  }
+}
+
+// parameters:
+// _pin - pin number which will output the signal
+// frequency - PWM frequency in Hz
+// duration - time in ms - how long will the signal be outputted.
+//   If not provided, or 0 you must manually call my_noTone to end output
+void my_tone(uint8_t _pin, unsigned int frequency, unsigned long duration) {
+  log_d("_pin=%d, frequency=%u Hz, duration=%lu ms", _pin, frequency, duration);
+  if (my_tone_init()) {
+    tone_msg_t tone_msg = {
+      .tone_cmd = TONE_START,
+      .pin = _pin,
+      .frequency = frequency,
+      .duration = duration,
+      .channel = 0  // Ignored
+    };
+    xQueueSend(_tone_queue, &tone_msg, portMAX_DELAY);
+  }
 }
