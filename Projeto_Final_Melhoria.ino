@@ -197,6 +197,22 @@ SemaphoreHandle_t xSkywriter_Semaphore;
 /*Queues*/
 QueueHandle_t xGesturesQueue;
 
+/*----------------Servo-----------------*/
+int servopin = 2;  // select digital pin 9 for servomotor signal line
+int myangle;       // initialize angle variable
+int pulsewidth;    // initialize width variable
+int val;
+void vServo(void *pvParameters);
+void servopulse(int servopin, int myangle)  // define a servo pulse function
+{
+  pulsewidth = (myangle * 11) + 500;  // convert angle to 500-2480 pulse width
+  digitalWrite(servopin, HIGH);       // set the level of servo pin as “high”
+  delayMicroseconds(pulsewidth);      // delay microsecond of pulse width
+  digitalWrite(servopin, LOW);        // set the level of servo pin as “low”
+  delay(20 - pulsewidth / 1000);
+}
+/*-----------------------------*/
+
 void setup() {
   Serial.begin(9600);
 
@@ -242,6 +258,9 @@ void setup() {
   }
   /* Create Buzzer Task. */
   xTaskCreatePinnedToCore(vBuzzer_Task, "Buzzer Task", 2048, NULL, 1, NULL, 1);
+
+  /*Servo Task*/
+  xTaskCreatePinnedToCore(vServo, "Servo motor", 1024, NULL, 1, NULL, 1);
 }
 
 void vBuzzer_Task(void *pvParameters) {
