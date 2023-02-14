@@ -214,6 +214,7 @@ SemaphoreHandle_t xSkywriter_Semaphore;
 
 /*Queues*/
 QueueHandle_t xGesturesQueue;
+QueueHandle_t xServoQueue;
 
 /* A variable that is incremented by the idle task hook function. */
 volatile unsigned long ulIdleCycleCount = 0UL;
@@ -246,6 +247,7 @@ void setup() {
 
   /*Queues Creation*/
   xGesturesQueue = xQueueCreate(5, sizeof(char));
+  xServoQueue = xQueueCreate(5, sizeof(int));
 
   /* Check the semaphore was created successfully. */
   if (xSkywriter_Semaphore != NULL) {
@@ -303,7 +305,7 @@ void vLCDTask(void *pvParameters) {
   for (;;) {
     tft.setTextSize(2);
     tft.setCursor(10, 2);
-    sprintf(stringTime, "%02d:%02d:%02d", rtc.getHour(true), rtc.getMinute(),rtc.getSecond());
+    sprintf(stringTime, "%02d:%02d:%02d", rtc.getHour(true), rtc.getMinute(), rtc.getSecond());
     tft.println(stringTime);
     tft.setCursor(15, 100);
     tft.println(layout[position[pos_lcd][0]]);
@@ -395,14 +397,14 @@ void vAmbientLight(void *pvParameters) {
 
 void vLEDPWM(void *pvParameters) {
   int ledChannel = LED_PIN;
-  ledcSetup(ledChannel,FREQ,ADC_RESOLUTION);
-  ledcAttachPin(LED_PIN,ledChannel);
+  ledcSetup(ledChannel, FREQ, ADC_RESOLUTION);
+  ledcAttachPin(LED_PIN, ledChannel);
   for (;;) {
-    for (int dutyCycle = 0; dutyCycle <= (pow(2,ADC_RESOLUTION)); dutyCycle += 40){
+    for (int dutyCycle = 0; dutyCycle <= (pow(2, ADC_RESOLUTION)); dutyCycle += 40) {
       ledcWrite(LED_PIN, dutyCycle);
       vTaskDelay(10 / portTICK_PERIOD_MS);
     }
-    for (int dutyCycle = (pow(2,ADC_RESOLUTION)); dutyCycle >= 0; dutyCycle -= 40){
+    for (int dutyCycle = (pow(2, ADC_RESOLUTION)); dutyCycle >= 0; dutyCycle -= 40) {
       ledcWrite(LED_PIN, dutyCycle);
       vTaskDelay(10 / portTICK_PERIOD_MS);
     }
@@ -428,14 +430,44 @@ void vSkywriter_Task(void *pvParameters) {
 
 void vGestureManager_Task(void *pvParameters) {
   char gesture;
-
+  int pos_servo = 0;
   /* As per most tasks, this task is implemented within an infinite loop. */
   for (;;) {
     if (xQueueReceive(xGesturesQueue, &gesture, portMAX_DELAY) != errQUEUE_EMPTY) {
       /* To get here the event must have occurred.  Process the event (in this
       case we just print out a message). */
+      switch (gesture) {
+        case 2:
+          if (pos_lcd == 0) {
+            pos_lcd = 2;
+          } else {
+            pos_lcd--;
+          }
+          break;
+        case 3:
+          if (pos_lcd == 2) {
+            pos_lcd = 0;
+          } else {
+            pos_lcd++;
+          }
+          break;
+        case 4:
+          if (pos_servo != 4) {
+            pos_servo++;
+            xQueueSendToBack(xServoQueue, &pos_servo, 0);
+          }
+          break;
+        case 5:
+          if (pos_servo != 0) {
+            pos_servo--;
+            xQueueSendToBack(xServoQueue, &pos_servo, 0);
+          }
+          break;
+        default:
+          Serial.println("Gesture - Garbage");
+      }
       Serial.printf("Gesture Manager Task - Gesture: %d\r\n", gesture);
-    }
+    }    
   }
 }
 
