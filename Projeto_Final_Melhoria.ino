@@ -5,6 +5,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_system.h"
+#include <ESP32Time.h>
 //---------------- PINS -----------------//
 // Set Adafruit tft pins
 #define TFT_DC 33
