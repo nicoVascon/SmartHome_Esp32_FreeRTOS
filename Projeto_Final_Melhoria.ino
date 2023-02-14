@@ -7,7 +7,7 @@
 #include "esp_system.h"
 #include "nvs_flash.h"
 #include "esp_task_wdt.h"
-#include "ESP32Time"
+#include <ESP32Time.h>
 
 #include <Wire.h>
 #include "skywriter.h"
@@ -184,10 +184,10 @@ const int durations[] = {
 //---------------- PINS -----------------//
 // Set Adafruit tft pins
 #define TFT_DC 33
-#define TFT_CS 3
+#define TFT_CS 25
 #define TFT_MOSI 23
 #define TFT_CLK 18
-#define TFT_RST 1
+#define TFT_RST 5
 #define TFT_MISO 19
 
 
@@ -227,7 +227,7 @@ void setup() {
   analogReadResolution(ADC_RESOLUTION);
 
   /*LCD Task*/
-  xTaskCreatePinnedToCore(vLCDTask, "TFT Display", 1024, NULL, 1, NULL, 1);
+  xTaskCreatePinnedToCore(vLCDTask, "TFT Display", 4096, NULL, 1, NULL, 1);
 
   /* Before a semaphore is used it must be explicitly created.  In this example
   a binary semaphore is created. */
@@ -284,7 +284,9 @@ void vLCDTask(void *pvParameters) {
   tft.fillRect(85, 30, 150, 190, ILI9341_WHITE);
   tft.fillRect(87, 32, 146, 186, ILI9341_BLACK);
   tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
+  Serial.println("Oi Ini");
   for (;;) {
+    Serial.println("Oi for......");
     tft.setTextSize(2);
     tft.setCursor(10, 2);
     sprintf(stringTime, "%02d:%02d:%02d", rtc.getHour(true), rtc.getMinute(),rtc.getSecond());
