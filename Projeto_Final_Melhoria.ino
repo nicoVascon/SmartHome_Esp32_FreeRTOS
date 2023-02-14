@@ -18,6 +18,7 @@
 //--------------- TASKS -----------------//
 void vLCDTask(void *pvParameters);
 
+int pos_lcd = 0;
 
 void setup() {
   Serial.begin(9600);//Set Baud Rate to 9600 bps
@@ -27,11 +28,11 @@ void setup() {
 
 
 void vLCDTask(void *pvParameters) {
-  ESP32Time rtc(3600);  // offset in seconds GMT+1
+  ESP32Time rtc(3600);                  // offset in seconds GMT+1
   rtc.setTime(10, 50, 8, 17, 1, 2021);  // 17th Jan 2021 15:24:30
-  int pos[] = {0,1,2};
-  const char* layout[3] = {"GAS ", "TEMP", "LUM "};
-  int values_test[] ={20,24,30};
+  const int position[3][3] = { { 0, 1, 2 }, { 1, 2, 0 }, { 2, 0, 1 } };
+  const char *layout[3] = { "GAS ", "TEMP", "LUM " };
+  int values_test[] = { 20, 24, 30 };
   char stringTime[8];
   TickType_t xLastWakeTime;
   const TickType_t xFrequency = 1000;
@@ -48,25 +49,27 @@ void vLCDTask(void *pvParameters) {
   tft.fillRect(85, 30, 150, 190, ILI9341_WHITE);
   tft.fillRect(87, 32, 146, 186, ILI9341_BLACK);
   tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
+  Serial.println("Oi Ini");
   for (;;) {
+    Serial.println("Oi for......");
     tft.setTextSize(2);
     tft.setCursor(10, 2);
-    sprintf(stringTime, "%02d:%02d:%02d", rtc.getHour(true), rtc.getMinute(),rtc.getSecond());
+    sprintf(stringTime, "%02d:%02d:%02d", rtc.getHour(true), rtc.getMinute(), rtc.getSecond());
     tft.println(stringTime);
     tft.setCursor(15, 100);
-    tft.println(layout[pos[0]]);
+    tft.println(layout[position[pos_lcd][0]]);
     tft.setCursor(255, 100);
-    tft.println(layout[pos[2]]);
+    tft.println(layout[position[pos_lcd][2]]);
     tft.setCursor(15, 125);
-    tft.println(values_test[pos[0]]);
+    tft.println(values_test[position[pos_lcd][0]]);
     tft.setCursor(255, 125);
-    tft.println(values_test[pos[2]]);
+    tft.println(values_test[position[pos_lcd][2]]);
     tft.setTextSize(5);
     tft.setCursor(95, 40);
-    tft.println(layout[pos[1]]);
+    tft.println(layout[position[pos_lcd][1]]);
     tft.setCursor(95, 90);
-    tft.println(values_test[pos[1]]);
-    vTaskDelayUntil( &xLastWakeTime, xFrequency );
+    tft.println(values_test[position[pos_lcd][1]]);
+    vTaskDelayUntil(&xLastWakeTime, xFrequency);
   }
 }
 
