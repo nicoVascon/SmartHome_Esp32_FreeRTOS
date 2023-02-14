@@ -218,6 +218,9 @@ SemaphoreHandle_t xSkywriter_Semaphore;
 /*Queues*/
 QueueHandle_t xGesturesQueue;
 QueueHandle_t xServoQueue;
+QueueHandle_t xTemperatureQueue;
+QueueHandle_t xHumidityQueue;
+QueueHandle_t xGasQueue;
 
 /* Aux Functions*/
 void servopulse(int myangle);
