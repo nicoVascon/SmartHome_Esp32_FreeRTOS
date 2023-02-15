@@ -274,12 +274,12 @@ void setup() {
   analogReadResolution(ADC_RESOLUTION);
 
   /*Servo Task*/
-  xTaskCreatePinnedToCore(vServo_Task, "Servo motor", 1024, NULL, 2, NULL, 1);
+  xTaskCreatePinnedToCore(vServo_Task, "Servo motor", 1024, NULL, 4, NULL, 1);
 
   vSemaphoreCreateBinary(xLCD_Semaphore);
   if (xLCD_Semaphore != NULL) {
   /*LCD Task*/
-  xTaskCreatePinnedToCore(vLCDTask, "TFT Display", 4096, NULL, 1, NULL, 1);
+  xTaskCreatePinnedToCore(vLCDTask, "TFT Display", 4096, NULL, 3, NULL, 1);
   }
   /* Before a semaphore is used it must be explicitly created.  In this example
   a binary semaphore is created. */
@@ -294,24 +294,23 @@ void setup() {
                             "Skywriter Task", /* Text name for the task.  This is to facilitate debugging only. */
                             2048,             /* Stack depth - most small microcontrollers will use much less stack than this. */
                             NULL,             /* We are not using the task parameter. */
-                            1,                /* This task will run at priority 1. */
+                            2,                /* This task will run at priority 1. */
                             NULL,             /* We are not using the task handle. */
                             1);               /* Core where the task should run */
 
     /* Create the other task in exactly the same way. */
-    xTaskCreatePinnedToCore(vGestureManager_Task, "Gesture Manager", 2048, NULL, 1, NULL, 1);
+    xTaskCreatePinnedToCore(vGestureManager_Task, "Gesture Manager", 2048, NULL, 4, NULL, 1);
   }
 
+  /*Interruption For Play Music*/
   pinMode(button_pin, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(button_pin), &vInterruptHandler, FALLING);
-  /* Create Buzzer Task. */
-  // xTaskCreatePinnedToCore(vBuzzer_Task, "Buzzer Task", 2048, NULL, 1, &xBuzzerTask_Handle, 1);
   /* Create Idle Count Printer Task. */
-  xTaskCreatePinnedToCore(vIdleCountPrinter_Task, "vIdleCountPrinter Task", 2048, NULL, 2, NULL, 1);
+  xTaskCreatePinnedToCore(vIdleCountPrinter_Task, "vIdleCountPrinter Task", 2048, NULL, 6, NULL, 1);
   /* Create Brain Task. */
-  xTaskCreatePinnedToCore(vBrain_Task, "Brain Task", 2048, NULL, 1, NULL, 1);
+  xTaskCreatePinnedToCore(vBrain_Task, "Brain Task", 2048, NULL, 5, NULL, 1);
   /* Create Brain Task. */
-  xTaskCreatePinnedToCore(vPrinter_Task, "Printer Task", 2048, NULL, 1, NULL, 1);
+  xTaskCreatePinnedToCore(vPrinter_Task, "Printer Task", 2048, NULL, 3, NULL, 1);
 }
 
 void vPrinter_Task(void *pvParameters){
