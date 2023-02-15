@@ -197,6 +197,8 @@ const int durations[] = {
 /*IRS*/
 void my_poll(void);
 void  IRAM_ATTR  vInterruptHandler( void );
+/*IRS Debounce Variables*/
+TickType_t xLastIntTime = xTaskGetTickCount();
 
 /* The task functions. */
 void vSkywriter_Task(void *pvParameters);
@@ -209,6 +211,7 @@ void vLCDTask(void *pvParameters);
 void vServo_Task(void *pvParameters);
 void vIdleCountPrinter_Task(void *pvParameters);
 void vBrain_Task(void *pvParameters);
+void vPrinter_Task(void *pvParameters);
 
 TaskHandle_t xBuzzerTask_Handle;
 
@@ -233,6 +236,7 @@ QueueHandle_t xServoQueue;
 QueueHandle_t xTemperatureQueue;
 QueueHandle_t xLuminosityQueue;
 QueueHandle_t xGasQueue;
+QueueHandle_t xStringsQueue;
 
 /* Aux Functions*/
 void servopulse(int myangle);
@@ -256,6 +260,7 @@ void setup() {
   xTemperatureQueue = xQueueCreate(5, sizeof(float));
   xLuminosityQueue = xQueueCreate(5, sizeof(int));
   xGasQueue = xQueueCreate(5, sizeof(int));
+  xStringsQueue = xQueueCreate(5, sizeof(std::string));
 
   /* Mutex Creation */
   xSensorsValuesMutex = xSemaphoreCreateMutex();
@@ -305,9 +310,22 @@ void setup() {
   xTaskCreatePinnedToCore(vIdleCountPrinter_Task, "vIdleCountPrinter Task", 2048, NULL, 2, NULL, 1);
   /* Create Brain Task. */
   xTaskCreatePinnedToCore(vBrain_Task, "Brain Task", 2048, NULL, 1, NULL, 1);
+  /* Create Brain Task. */
+  xTaskCreatePinnedToCore(vPrinter_Task, "Printer Task", 2048, NULL, 1, NULL, 1);
 }
 
-TickType_t xLastIntTime = xTaskGetTickCount();
+void vPrinter_Task(void *pvParameters){
+  std::string messageToPrint;
+  for(;;){
+    while (xQueueReceive(xStringsQueue, &messageToPrint, portMAX_DELAY) != errQUEUE_EMPTY) {
+      Serial.print(messageToPrint.c_str());
+    }
+  }
+}
+
+void sendToPrint(std::string message){
+  xQueueSendToBack(xStringsQueue, &message, 0);
+}
 
 void  IRAM_ATTR  vInterruptHandler( void ){
   if(xTaskGetTickCount() - xLastIntTime < 400){
@@ -338,45 +356,39 @@ void vBrain_Task(void *pvParameters) {
   float avrg_gas;
   int i;
   for (;;) {
-    Serial.printf("Brain Task!!\nValues:\n");
+    sendToPrint("Brain Task!!\nValues:\n");
     i = 0;
     acc_temperature = 0;
     while (xQueueReceive(xTemperatureQueue, &temperature, 0) != errQUEUE_EMPTY) {
-      Serial.printf("%d: %f Temp\n", i, temperature);
       i++;
       acc_temperature += temperature;
     }
-    Serial.printf("Acc Temp: %f\n", acc_temperature);
     if (i > 0) {
       avrg_temperature = acc_temperature / i;
-      Serial.printf("AVRG Temp: %f\n", avrg_temperature);
+      sendToPrint("AVRG Temp: " + std::to_string(avrg_temperature) + "\n");
     }
 
 
     i = 0;
     acc_lum = 0;
     while (xQueueReceive(xLuminosityQueue, &lum, 0) != errQUEUE_EMPTY) {
-      Serial.printf("%d: %d Lum\n", i, lum);
       i++;
       acc_lum += lum;
     }
-    Serial.printf("Acc Lum: %d\n", acc_lum);
     if (i > 0) {
       avrg_lum = (float)acc_lum / i;
-      Serial.printf("AVRG Lum: %f\n", avrg_lum);
+      sendToPrint("AVRG Lum: " + std::to_string(avrg_lum) + "\n");
     }
 
     i = 0;
     acc_gas = 0;
     while (xQueueReceive(xGasQueue, &gas, 0) != errQUEUE_EMPTY) {
-      Serial.printf("%d: %d Gas\n", i, gas);
       i++;
       acc_gas += gas;
     }
-    Serial.printf("Acc Gas: %d\n", acc_gas);
     if (i > 0) {
       avrg_gas = (float)acc_gas / i;
-      Serial.printf("AVRG Gas: %f\n", avrg_gas);
+      sendToPrint("AVRG Gas: " + std::to_string(avrg_gas) + "\n");
     }
 
     xSemaphoreTake(xSensorsValuesMutex, portMAX_DELAY);
@@ -422,7 +434,7 @@ void vIdleCountPrinter_Task(void *pvParameters) {
   const TickType_t xFrequency = 1000;
   for (;;) {
     xLastWakeTime = xTaskGetTickCount();
-    Serial.printf("Idle:%lu\n", ulIdleCycleCount);
+    sendToPrint("Idle:" + std::to_string(ulIdleCycleCount) + "\n");
     ulIdleCycleCount = 0UL;
     vTaskDelayUntil(&xLastWakeTime, xFrequency / portTICK_PERIOD_MS);
   }
@@ -548,7 +560,7 @@ void vTemperature(void *pvParameters) {
   for (;;) {
     analogTemp = analogRead(LM35_Pin);
     analogTemp_voltage = (500 * analogTemp) / 4096;
-    Serial.printf("Temp:%f\n", analogTemp_voltage);  //Display the temperature on Serial monitor
+    sendToPrint("Temp:" + std::to_string(analogTemp_voltage) + "\n");
     xQueueSendToBack(xTemperatureQueue, &analogTemp_voltage, 0);
     vTaskDelay(250 / portTICK_PERIOD_MS);
   }
@@ -558,7 +570,7 @@ void vAnalogGas(void *pvParameters) {
   int val;
   for (;;) {
     val = analogRead(GAS_PIN);
-    Serial.printf("Gas: %d\n", val);
+    sendToPrint("Gas:" + std::to_string(val) + "\n");
     xQueueSendToBack(xGasQueue, &val, 0);
     vTaskDelay(250 / portTICK_PERIOD_MS);
   }
@@ -568,7 +580,7 @@ void vAmbientLight(void *pvParameters) {
   int val;
   for (;;) {
     val = analogRead(LIGHT_PIN);
-    Serial.printf("Lum: %d\n", val);
+    sendToPrint("Lum:" + std::to_string(val) + "\n");
     xQueueSendToBack(xLuminosityQueue, &val, 0);
     vTaskDelay(250 / portTICK_PERIOD_MS);
   }
@@ -653,9 +665,9 @@ void vGestureManager_Task(void *pvParameters) {
           }
           break;
         default:
-          Serial.println("Gesture - Garbage");
+          sendToPrint("Gesture - Garbage");
       }
-      Serial.printf("Gesture Manager Task - Gesture: %d\r\n", gesture);
+      sendToPrint("Gesture Manager Task - Gesture: " + std::to_string(gesture) + "\n");      
     }    
   }
 }
@@ -668,11 +680,6 @@ void gesture(unsigned char type) {
   char last_gesture = type;
   xQueueSendToBack(xGesturesQueue, &last_gesture, 0);
 }
-
-void handle_xyz(unsigned int x, unsigned int y, unsigned int z) {
-  Serial.printf("X: %d; Y: %d; Z: %d\r\n", x, y, z);
-}
-
 
 /* Idle hook functions MUST be called vApplicationIdleHook(), take no parameters,
 and return void. */
