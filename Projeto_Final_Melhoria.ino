@@ -205,19 +205,28 @@ void vAnalogGas(void *pvParameters);
 void vAmbientLight(void *pvParameters);
 void vLCDTask(void *pvParameters);
 void vServo_Task(void *pvParameters);
+void vIdleCountPrinter_Task(void *pvParameters);
 void vBrain_Task(void *pvParameters);
 
 /* LCD Sensors Values Position*/
 int pos_lcd = 0;
 
+/* Sensor Values */
+float sensorsValues[3] = { 1, 2, 3 };
+
 /* Declare a variable of type SemaphoreHandle_t.  This is used to reference the
 semaphore that is used to synchronize a task with an interrupt. */
-SemaphoreHandle_t xBinarySemaphore;
 SemaphoreHandle_t xSkywriter_Semaphore;
+
+/* Mutexes */
+SemaphoreHandle_t xSensorsValuesMutex;
 
 /*Queues*/
 QueueHandle_t xGesturesQueue;
 QueueHandle_t xServoQueue;
+QueueHandle_t xTemperatureQueue;
+QueueHandle_t xLuminosityQueue;
+QueueHandle_t xGasQueue;
 
 /* Aux Functions*/
 void servopulse(int myangle);
@@ -235,9 +244,19 @@ void setup() {
   /*Idle Hook Task Definition*/
   esp_register_freertos_idle_hook(my_vApplicationIdleHook);
 
+  /*Queues Creation*/
+  xGesturesQueue = xQueueCreate(5, sizeof(char));
+  xServoQueue = xQueueCreate(5, sizeof(int));
+  xTemperatureQueue = xQueueCreate(5, sizeof(float));
+  xLuminosityQueue = xQueueCreate(5, sizeof(int));
+  xGasQueue = xQueueCreate(5, sizeof(int));
+
+  /* Mutex Creation */
+  xSensorsValuesMutex = xSemaphoreCreateMutex();
+
   /*Sensors Tasks*/
   xTaskCreatePinnedToCore(vLEDPWM, "PWM LED Task", 1024, NULL, 1, NULL, 1);
-  xTaskCreatePinnedToCore(vTemperature, "Temperature Measurement Task", 1024, NULL, 1, NULL, 1);
+  xTaskCreatePinnedToCore(vTemperature, "Temperature Measurement Task", 2048, NULL, 1, NULL, 1);
   xTaskCreatePinnedToCore(vAnalogGas, "Analog Gas Measurement Task", 2048, NULL, 1, NULL, 1);
   xTaskCreatePinnedToCore(vAmbientLight, "Ambient Light Measurement Task", 2048, NULL, 1, NULL, 1);
   analogReadResolution(ADC_RESOLUTION);
@@ -252,9 +271,7 @@ void setup() {
   a binary semaphore is created. */
   vSemaphoreCreateBinary(xSkywriter_Semaphore);
 
-  /*Queues Creation*/
-  xGesturesQueue = xQueueCreate(5, sizeof(char));
-  xServoQueue = xQueueCreate(5, sizeof(int));
+
 
   /* Check the semaphore was created successfully. */
   if (xSkywriter_Semaphore != NULL) {
@@ -272,8 +289,75 @@ void setup() {
   }
   /* Create Buzzer Task. */
   xTaskCreatePinnedToCore(vBuzzer_Task, "Buzzer Task", 2048, NULL, 1, NULL, 1);
+  /* Create Idle Count Printer Task. */
+  xTaskCreatePinnedToCore(vIdleCountPrinter_Task, "vIdleCountPrinter Task", 2048, NULL, 2, NULL, 1);
   /* Create Brain Task. */
-  xTaskCreatePinnedToCore(vBrain_Task, "Brain Task", 2048, NULL, 2, NULL, 1);
+  xTaskCreatePinnedToCore(vBrain_Task, "Brain Task", 2048, NULL, 1, NULL, 1);
+}
+
+void vBrain_Task(void *pvParameters) {
+  float temperature;
+  int lum;
+  int gas;
+  float acc_temperature;
+  int acc_lum;
+  int acc_gas;
+  float avrg_temperature;
+  float avrg_lum;
+  float avrg_gas;
+  int i;
+  for (;;) {
+    Serial.printf("Brain Task!!\nValues:\n");
+    i = 0;
+    acc_temperature = 0;
+    while (xQueueReceive(xTemperatureQueue, &temperature, 0) != errQUEUE_EMPTY) {
+      Serial.printf("%d: %f Temp\n", i, temperature);
+      i++;
+      acc_temperature += temperature;
+    }
+    Serial.printf("Acc Temp: %f\n", acc_temperature);
+    if (i > 0) {
+      avrg_temperature = acc_temperature / i;
+      Serial.printf("AVRG Temp: %f\n", avrg_temperature);
+    }
+
+
+    i = 0;
+    acc_lum = 0;
+    while (xQueueReceive(xLuminosityQueue, &lum, 0) != errQUEUE_EMPTY) {
+      Serial.printf("%d: %d Lum\n", i, lum);
+      i++;
+      acc_lum += lum;
+    }
+    Serial.printf("Acc Lum: %d\n", acc_lum);
+    if (i > 0) {
+      avrg_lum = (float)acc_lum / i;
+      Serial.printf("AVRG Lum: %f\n", avrg_lum);
+    }
+
+    i = 0;
+    acc_gas = 0;
+    while (xQueueReceive(xGasQueue, &gas, 0) != errQUEUE_EMPTY) {
+      Serial.printf("%d: %d Gas\n", i, gas);
+      i++;
+      acc_gas += gas;
+    }
+    Serial.printf("Acc Gas: %d\n", acc_gas);
+    if (i > 0) {
+      avrg_gas = (float)acc_gas / i;
+      Serial.printf("AVRG Gas: %f\n", avrg_gas);
+    }
+
+    xSemaphoreTake(xSensorsValuesMutex, portMAX_DELAY);
+    {
+      sensorsValues[0] = avrg_gas;
+      sensorsValues[1] = avrg_temperature;
+      sensorsValues[2] = avrg_lum;
+    }
+    xSemaphoreGive(xSensorsValuesMutex);
+
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+  }
 }
 
 void vServo_Task(void *pvParameters) {
@@ -302,7 +386,7 @@ void servopulse(int myangle)  // define a servo pulse function
   vTaskDelay((20 - pulsewidth / 1000) / portTICK_PERIOD_MS);
 }
 
-void vBrain_Task(void *pvParameters) {
+void vIdleCountPrinter_Task(void *pvParameters) {
   TickType_t xLastWakeTime;
   const TickType_t xFrequency = 1000;
   for (;;) {
@@ -318,7 +402,7 @@ void vLCDTask(void *pvParameters) {
   rtc.setTime(10, 50, 8, 17, 1, 2021);  // 17th Jan 2021 15:24:30
   const int position[3][3] = { { 0, 1, 2 }, { 1, 2, 0 }, { 2, 0, 1 } };
   const char *layout[3] = { "GAS ", "TEMP", "LUM " };
-  int values_test[] = { 20, 24, 30 };
+  float values_test[] = { 20, 24, 30 };
   char stringTime[8];
   TickType_t xLastWakeTime;
   const TickType_t xFrequency = 1000;
@@ -336,6 +420,14 @@ void vLCDTask(void *pvParameters) {
   tft.fillRect(87, 32, 146, 186, ILI9341_BLACK);
   tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
   for (;;) {
+    xSemaphoreTake(xSensorsValuesMutex, portMAX_DELAY);
+    {
+      values_test[0] = sensorsValues[0];
+      values_test[1] = sensorsValues[1];
+      values_test[2] = sensorsValues[2];
+    }
+    xSemaphoreGive(xSensorsValuesMutex);
+
     tft.setTextSize(2);
     tft.setCursor(10, 2);
     sprintf(stringTime, "%02d:%02d:%02d", rtc.getHour(true), rtc.getMinute(), rtc.getSecond());
@@ -345,14 +437,14 @@ void vLCDTask(void *pvParameters) {
     tft.setCursor(255, 100);
     tft.println(layout[position[pos_lcd][2]]);
     tft.setCursor(15, 125);
-    tft.println(values_test[position[pos_lcd][0]]);
+    tft.printf("%4.0f", values_test[position[pos_lcd][0]]);
     tft.setCursor(255, 125);
-    tft.println(values_test[position[pos_lcd][2]]);
+    tft.printf("%4.0f\n", values_test[position[pos_lcd][2]]);
     tft.setTextSize(5);
     tft.setCursor(95, 40);
     tft.println(layout[position[pos_lcd][1]]);
     tft.setCursor(95, 90);
-    tft.println(values_test[position[pos_lcd][1]]);
+    tft.printf("%4.0f\n", values_test[position[pos_lcd][1]]);
     vTaskDelayUntil(&xLastWakeTime, xFrequency / portTICK_PERIOD_MS);
   }
 }
@@ -404,8 +496,8 @@ void vTemperature(void *pvParameters) {
   for (;;) {
     analogTemp = analogRead(LM35_Pin);
     analogTemp_voltage = (500 * analogTemp) / 4096;
-    Serial.print("Temp:");  //Display the temperature on Serial monitor
-    Serial.println(analogTemp_voltage);
+    Serial.printf("Temp:%f\n", analogTemp_voltage);  //Display the temperature on Serial monitor
+    xQueueSendToBack(xTemperatureQueue, &analogTemp_voltage, 0);
     vTaskDelay(250 / portTICK_PERIOD_MS);
   }
 }
@@ -415,6 +507,7 @@ void vAnalogGas(void *pvParameters) {
   for (;;) {
     val = analogRead(GAS_PIN);
     Serial.printf("Gas: %d\n", val);
+    xQueueSendToBack(xGasQueue, &val, 0);
     vTaskDelay(250 / portTICK_PERIOD_MS);
   }
 }
@@ -424,6 +517,7 @@ void vAmbientLight(void *pvParameters) {
   for (;;) {
     val = analogRead(LIGHT_PIN);
     Serial.printf("Lum: %d\n", val);
+    xQueueSendToBack(xLuminosityQueue, &val, 0);
     vTaskDelay(250 / portTICK_PERIOD_MS);
   }
 }
