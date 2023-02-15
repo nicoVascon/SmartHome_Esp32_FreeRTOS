@@ -196,7 +196,7 @@ const int durations[] = {
 
 /*IRS*/
 void my_poll(void);
-void  IRAM_ATTR  vInterruptHandler( void );
+void IRAM_ATTR vInterruptHandler(void);
 /*IRS Debounce Variables*/
 TickType_t xLastIntTime = xTaskGetTickCount();
 
@@ -214,6 +214,9 @@ void vBrain_Task(void *pvParameters);
 void vPrinter_Task(void *pvParameters);
 
 TaskHandle_t xBuzzerTask_Handle;
+TaskHandle_t xTempTask_Handle;
+TaskHandle_t xLumTask_Handle;
+TaskHandle_t xGasTask_Handle;
 
 /* LCD Sensors Values Position*/
 int pos_lcd_global = 0;
@@ -245,11 +248,7 @@ void servopulse(int myangle);
 volatile unsigned long ulIdleCycleCount = 0UL;
 
 void setup() {
-  Serial.begin(9600);
 
-  while (!Serial) {};
-
-  Serial.println("Hello world!");
 
   /*Idle Hook Task Definition*/
   esp_register_freertos_idle_hook(my_vApplicationIdleHook);
@@ -268,9 +267,9 @@ void setup() {
 
   /*Sensors Tasks*/
   xTaskCreatePinnedToCore(vLEDPWM, "PWM LED Task", 1024, NULL, 1, NULL, 1);
-  xTaskCreatePinnedToCore(vTemperature, "Temperature Measurement Task", 2048, NULL, 1, NULL, 1);
-  xTaskCreatePinnedToCore(vAnalogGas, "Analog Gas Measurement Task", 2048, NULL, 1, NULL, 1);
-  xTaskCreatePinnedToCore(vAmbientLight, "Ambient Light Measurement Task", 2048, NULL, 1, NULL, 1);
+  xTaskCreatePinnedToCore(vTemperature, "Temperature Measurement Task", 2048, NULL, 2, &xTempTask_Handle, 1);
+  xTaskCreatePinnedToCore(vAnalogGas, "Analog Gas Measurement Task", 2048, NULL, 1, &xGasTask_Handle, 1);
+  xTaskCreatePinnedToCore(vAmbientLight, "Ambient Light Measurement Task", 2048, NULL, 1, &xLumTask_Handle, 1);
   analogReadResolution(ADC_RESOLUTION);
 
   /*Servo Task*/
@@ -278,8 +277,8 @@ void setup() {
 
   vSemaphoreCreateBinary(xLCD_Semaphore);
   if (xLCD_Semaphore != NULL) {
-  /*LCD Task*/
-  xTaskCreatePinnedToCore(vLCDTask, "TFT Display", 4096, NULL, 3, NULL, 1);
+    /*LCD Task*/
+    xTaskCreatePinnedToCore(vLCDTask, "TFT Display", 4096, NULL, 3, NULL, 1);
   }
   /* Before a semaphore is used it must be explicitly created.  In this example
   a binary semaphore is created. */
@@ -313,33 +312,39 @@ void setup() {
   xTaskCreatePinnedToCore(vPrinter_Task, "Printer Task", 2048, NULL, 3, NULL, 1);
 }
 
-void vPrinter_Task(void *pvParameters){
+void vPrinter_Task(void *pvParameters) {
+  Serial.begin(9600);
+
+  while (!Serial) {};
+
+  Serial.println("Hello world!");
+
   std::string messageToPrint;
-  for(;;){
+  for (;;) {
     while (xQueueReceive(xStringsQueue, &messageToPrint, portMAX_DELAY) != errQUEUE_EMPTY) {
       Serial.print(messageToPrint.c_str());
     }
   }
 }
 
-void sendToPrint(std::string message){
-  xQueueSendToBack(xStringsQueue, &message, 10); 
+void sendToPrint(std::string message) {
+  xQueueSendToBack(xStringsQueue, &message, 10);
 }
 
-void  IRAM_ATTR  vInterruptHandler( void ){
-  if(xTaskGetTickCount() - xLastIntTime < 400){
+void IRAM_ATTR vInterruptHandler(void) {
+  if (xTaskGetTickCount() - xLastIntTime < 400) {
     return;
   }
   xLastIntTime = xTaskGetTickCount();
-  if(xBuzzerTask_Handle != NULL){
+  if (xBuzzerTask_Handle != NULL) {
     // Serial.print("Delete!!!");
-    vTaskDelete( xBuzzerTask_Handle ); 
+    vTaskDelete(xBuzzerTask_Handle);
     xBuzzerTask_Handle = NULL;
-  }else{
+  } else {
     // Serial.print("Create!!!");
-    xTaskCreatePinnedToCore(vBuzzer_Task, "Buzzer Task", 2048, NULL, 1, &xBuzzerTask_Handle, 1);    
+    xTaskCreatePinnedToCore(vBuzzer_Task, "Buzzer Task", 2048, NULL, 3, &xBuzzerTask_Handle, 1);
   }
-  
+
   // Serial.print("\n\nInt\n\n");
 }
 
@@ -422,9 +427,9 @@ void vServo_Task(void *pvParameters) {
 void servopulse(int myangle)  // define a servo pulse function
 {
   int pulsewidth = (myangle * 11) + 500;  // convert angle to 500-2480 pulse width
-  digitalWrite(SERVO_PIN, HIGH);       // set the level of servo pin as “high”
-  delayMicroseconds(pulsewidth);      // delay microsecond of pulse width
-  digitalWrite(SERVO_PIN, LOW);        // set the level of servo pin as “low”
+  digitalWrite(SERVO_PIN, HIGH);          // set the level of servo pin as “high”
+  delayMicroseconds(pulsewidth);          // delay microsecond of pulse width
+  digitalWrite(SERVO_PIN, LOW);           // set the level of servo pin as “low”
   vTaskDelay((20 - pulsewidth / 1000) / portTICK_PERIOD_MS);
 }
 
@@ -471,23 +476,23 @@ void vLCDTask(void *pvParameters) {
   tft.setCursor(95, 40);
   tft.println(layout[position[pos_lcd][1]]);
   for (;;) {
-    if (xSemaphoreTake(xLCD_Semaphore, (xFrequency-(xTaskGetTickCount()-xTemp))) == pdTRUE) {
+    if (xSemaphoreTake(xLCD_Semaphore, (xFrequency - (xTaskGetTickCount() - xTemp))) == pdTRUE) {
       xTemp = xTaskGetTickCount();
       xSemaphoreTake(xMutex_lcd, portMAX_DELAY);
       {
         pos_lcd = pos_lcd_global;
       }
-      xSemaphoreGive(xMutex_lcd);    
-    tft.setTextSize(2);
-    tft.setCursor(15, 100);
-    tft.println(layout[position[pos_lcd][0]]);
-    tft.setCursor(255, 100);
-    tft.println(layout[position[pos_lcd][2]]);
-      
-    tft.setTextSize(5);
-    tft.setCursor(95, 40);
-    tft.println(layout[position[pos_lcd][1]]);
-    }else{
+      xSemaphoreGive(xMutex_lcd);
+      tft.setTextSize(2);
+      tft.setCursor(15, 100);
+      tft.println(layout[position[pos_lcd][0]]);
+      tft.setCursor(255, 100);
+      tft.println(layout[position[pos_lcd][2]]);
+
+      tft.setTextSize(5);
+      tft.setCursor(95, 40);
+      tft.println(layout[position[pos_lcd][1]]);
+    } else {
       xTemp = xTaskGetTickCount();
     }
     xSemaphoreTake(xSensorsValuesMutex, portMAX_DELAY);
@@ -632,9 +637,9 @@ void vGestureManager_Task(void *pvParameters) {
             if (pos_lcd_global == 0) {
 
               pos_lcd_global = 2;
-          } else {
+            } else {
               pos_lcd_global--;
-          }
+            }
           }
           xSemaphoreGive(xMutex_lcd);
           xSemaphoreGive(xLCD_Semaphore);
@@ -644,9 +649,9 @@ void vGestureManager_Task(void *pvParameters) {
           {
             if (pos_lcd_global == 2) {
               pos_lcd_global = 0;
-          } else {
+            } else {
               pos_lcd_global++;
-          }
+            }
           }
           xSemaphoreGive(xMutex_lcd);
           xSemaphoreGive(xLCD_Semaphore);
@@ -655,19 +660,44 @@ void vGestureManager_Task(void *pvParameters) {
           if (pos_servo != 4) {
             pos_servo++;
             xQueueSendToBack(xServoQueue, &pos_servo, 0);
+            updateSensorsPriority(pos_servo);
           }
           break;
         case 5:
           if (pos_servo != 0) {
             pos_servo--;
             xQueueSendToBack(xServoQueue, &pos_servo, 0);
+            updateSensorsPriority(pos_servo);
           }
           break;
         default:
           sendToPrint("Gesture - Garbage");
       }
-      sendToPrint("Gesture Manager Task - Gesture: " + std::to_string(gesture) + "\n");      
-    }    
+      sendToPrint("Gesture Manager Task - Gesture: " + std::to_string(gesture) + "\n");
+    }
+  }
+}
+
+void updateSensorsPriority(int mainSensor) {
+  if (mainSensor < 0 || mainSensor > 2) {
+    return;
+  }
+  switch (mainSensor) {
+    case 0:
+      vTaskPrioritySet(xTempTask_Handle, (unsigned portBASE_TYPE)2);
+      vTaskPrioritySet(xLumTask_Handle, (unsigned portBASE_TYPE)1);
+      vTaskPrioritySet(xGasTask_Handle, (unsigned portBASE_TYPE)1);
+      break;
+    case 1:
+      vTaskPrioritySet(xLumTask_Handle, (unsigned portBASE_TYPE)2);
+      vTaskPrioritySet(xGasTask_Handle, (unsigned portBASE_TYPE)1);
+      vTaskPrioritySet(xTempTask_Handle, (unsigned portBASE_TYPE)1);
+      break;
+    case 2:
+      vTaskPrioritySet(xGasTask_Handle, (unsigned portBASE_TYPE)2);
+      vTaskPrioritySet(xTempTask_Handle, (unsigned portBASE_TYPE)1);
+      vTaskPrioritySet(xLumTask_Handle, (unsigned portBASE_TYPE)1);
+      break;
   }
 }
 
