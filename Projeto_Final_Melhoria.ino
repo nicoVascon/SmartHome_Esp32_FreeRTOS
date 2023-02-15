@@ -1,3 +1,13 @@
+/*Nome ALUNO A- Daniel Filipe da Silva Nicolau 2201685
+Nome ALUNO B- Nicolas David Freire Vasconcellos 2203903
+IPLEIRIA - Instituto Politécnico de Leiria
+ESTG - Escola Superior de Tecnologia e Gestão
+LEEC- Licenciatura em Engenharia Eletrotécnica e de Computadores
+
+LINK: https://youtu.be/4BN29j8SXG0
+LINK: https://gist.github.com/dnicolauit/555f53c05ec67c722ac0890337eab3f5
+*/
+
 #include <Adafruit_ILI9341.h>
 
 #include "Arduino.h"
