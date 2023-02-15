@@ -247,8 +247,6 @@ void servopulse(int myangle);
 volatile unsigned long ulIdleCycleCount = 0UL;
 
 void setup() {
-
-
   /*Idle Hook Task Definition*/
   esp_register_freertos_idle_hook(my_vApplicationIdleHook);
 
@@ -279,11 +277,8 @@ void setup() {
     /*LCD Task*/
     xTaskCreatePinnedToCore(vLCDTask, "TFT Display", 4096, NULL, 3, NULL, 1);
   }
-  /* Before a semaphore is used it must be explicitly created.  In this example
-  a binary semaphore is created. */
+  /* Semafore Creation */
   vSemaphoreCreateBinary(xSkywriter_Semaphore);
-
-
 
   /* Check the semaphore was created successfully. */
   if (xSkywriter_Semaphore != NULL) {
@@ -313,9 +308,7 @@ void setup() {
 
 void vPrinter_Task(void *pvParameters) {
   Serial.begin(9600);
-
   while (!Serial) {};
-
   Serial.println("Hello world!");
 
   std::string messageToPrint;
@@ -327,7 +320,7 @@ void vPrinter_Task(void *pvParameters) {
 }
 
 void sendToPrint(std::string message) {
-  xQueueSendToBack(xStringsQueue, &message, 10);
+  xQueueSendToBack(xStringsQueue, &message, 1);
 }
 
 void IRAM_ATTR vInterruptHandler(void) {
@@ -341,7 +334,6 @@ void IRAM_ATTR vInterruptHandler(void) {
   } else {
     xTaskCreatePinnedToCore(vBuzzer_Task, "Buzzer Task", 2048, NULL, 3, &xBuzzerTask_Handle, 1);
   }
-
 }
 
 void vBrain_Task(void *pvParameters) {
@@ -366,7 +358,6 @@ void vBrain_Task(void *pvParameters) {
     if (i > 0) {
       avrg_temperature = acc_temperature / i;
     }
-
 
     i = 0;
     acc_lum = 0;
@@ -590,11 +581,11 @@ void vLEDPWM(void *pvParameters) {
   for (;;) {
     for (int dutyCycle = 0; dutyCycle <= (pow(2, ADC_RESOLUTION)); dutyCycle += 40) {
       ledcWrite(LED_PIN, dutyCycle);
-      vTaskDelay(10 / portTICK_PERIOD_MS);
+      vTaskDelay(5 / portTICK_PERIOD_MS);
     }
     for (int dutyCycle = (pow(2, ADC_RESOLUTION)); dutyCycle >= 0; dutyCycle -= 40) {
       ledcWrite(LED_PIN, dutyCycle);
-      vTaskDelay(10 / portTICK_PERIOD_MS);
+      vTaskDelay(5 / portTICK_PERIOD_MS);
     }
   }
 }
