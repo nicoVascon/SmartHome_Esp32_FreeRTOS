@@ -168,9 +168,10 @@ const int durations[] = {
 };
 /*--------------------------------------------------*/
 
+//---------------- PINS -----------------//
+/* Skywriter Pins */
 #define PIN_TRFD 12
 #define PIN_RESET 17
-
 //---------------- Actuators PINS -----------------//
 #define LED_PIN 13  //led
 #define button_pin 27
@@ -178,12 +179,6 @@ const int durations[] = {
 #define LM35_Pin 4    //temperature lm35
 #define GAS_PIN 15    //analog gas
 #define LIGHT_PIN 26  //ambient light sensor
-
-//---------------- ADDITIONAL CONSTANTS -----------------//
-#define ADC_RESOLUTION 12
-#define FREQ 5000
-
-//---------------- PINS -----------------//
 // Set Adafruit tft pins
 #define TFT_DC 33
 #define TFT_CS 25
@@ -194,8 +189,12 @@ const int durations[] = {
 // Servo Pins
 #define SERVO_PIN 2
 
+//---------------- ADDITIONAL CONSTANTS -----------------//
+#define ADC_RESOLUTION 12
+#define FREQ 5000
+
 /*IRS*/
-void my_poll(void);
+void IRAM_ATTR my_poll(void);
 void IRAM_ATTR vInterruptHandler(void);
 /*IRS Debounce Variables*/
 TickType_t xLastIntTime = xTaskGetTickCount();
@@ -212,7 +211,7 @@ void vServo_Task(void *pvParameters);
 void vIdleCountPrinter_Task(void *pvParameters);
 void vBrain_Task(void *pvParameters);
 void vPrinter_Task(void *pvParameters);
-
+/* Task Handles */
 TaskHandle_t xBuzzerTask_Handle;
 TaskHandle_t xTempTask_Handle;
 TaskHandle_t xLumTask_Handle;
@@ -337,15 +336,12 @@ void IRAM_ATTR vInterruptHandler(void) {
   }
   xLastIntTime = xTaskGetTickCount();
   if (xBuzzerTask_Handle != NULL) {
-    // Serial.print("Delete!!!");
     vTaskDelete(xBuzzerTask_Handle);
     xBuzzerTask_Handle = NULL;
   } else {
-    // Serial.print("Create!!!");
     xTaskCreatePinnedToCore(vBuzzer_Task, "Buzzer Task", 2048, NULL, 3, &xBuzzerTask_Handle, 1);
   }
 
-  // Serial.print("\n\nInt\n\n");
 }
 
 void vBrain_Task(void *pvParameters) {
@@ -369,7 +365,6 @@ void vBrain_Task(void *pvParameters) {
     }
     if (i > 0) {
       avrg_temperature = acc_temperature / i;
-      sendToPrint("AVRG Temp: " + std::to_string(avrg_temperature) + "\n");
     }
 
 
@@ -381,7 +376,6 @@ void vBrain_Task(void *pvParameters) {
     }
     if (i > 0) {
       avrg_lum = (float)acc_lum / i;
-      sendToPrint("AVRG Lum: " + std::to_string(avrg_lum) + "\n");
     }
 
     i = 0;
@@ -392,7 +386,6 @@ void vBrain_Task(void *pvParameters) {
     }
     if (i > 0) {
       avrg_gas = (float)acc_gas / i;
-      sendToPrint("AVRG Gas: " + std::to_string(avrg_gas) + "\n");
     }
 
     xSemaphoreTake(xSensorsValuesMutex, portMAX_DELAY);
@@ -537,7 +530,7 @@ void vBuzzer_Task(void *pvParameters) {
   }
 }
 
-void my_poll(void) {
+void IRAM_ATTR my_poll(void) {
   static signed portBASE_TYPE xHigherPriorityTaskWoken;
 
   xHigherPriorityTaskWoken = pdFALSE;
