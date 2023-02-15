@@ -190,8 +190,9 @@ const int durations[] = {
 #define TFT_CLK 18
 #define TFT_RST 5
 #define TFT_MISO 19
+Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_MOSI, TFT_CLK, TFT_RST, TFT_MISO);
 // Servo Pins
-#define SERVO_PIN 2 //Servo motor
+#define SERVO_PIN 2  //Servo motor
 
 void vServo(void *pvParameters);
 
@@ -206,13 +207,14 @@ void vTemperature(void *pvParameters);
 void vAnalogGas(void *pvParameters);
 void vAmbientLight(void *pvParameters);
 void vLCDTask(void *pvParameters);
-
+void vLCDTaskTime(void *pvParameters);
 int pos_lcd_global = 0;
 
 /* Declare a variable of type SemaphoreHandle_t.  This is used to reference the
 semaphore that is used to synchronize a task with an interrupt. */
 SemaphoreHandle_t xSkywriter_Semaphore;
 SemaphoreHandle_t xLCD_Semaphore;
+SemaphoreHandle_t xMutex_lcd_values;
 SemaphoreHandle_t xMutex_lcd;
 
 /*Queues*/
@@ -225,9 +227,9 @@ QueueHandle_t xServoQueue;
 void servopulse(int myangle)  // define a servo pulse function
 {
   int pulsewidth = (myangle * 11) + 500;  // convert angle to 500-2480 pulse width
-  digitalWrite(SERVO_PIN, HIGH);       // set the level of servo pin as “high”
-  delayMicroseconds(pulsewidth);      // delay microsecond of pulse width
-  digitalWrite(SERVO_PIN, LOW);        // set the level of servo pin as “low”
+  digitalWrite(SERVO_PIN, HIGH);          // set the level of servo pin as “high”
+  delayMicroseconds(pulsewidth);          // delay microsecond of pulse width
+  digitalWrite(SERVO_PIN, LOW);           // set the level of servo pin as “low”
   vTaskDelay((20 - pulsewidth / 1000) / portTICK_PERIOD_MS);
 }
 /*-----------------------------*/
@@ -252,8 +254,11 @@ void setup() {
   xTaskCreatePinnedToCore(vTemperature, "Temperature Measurement Task", 1024, NULL, 1, NULL, 1);
   xTaskCreatePinnedToCore(vAnalogGas, "Analog Gas Measurement Task", 2048, NULL, 1, NULL, 1);
   xTaskCreatePinnedToCore(vAmbientLight, "Ambient Light Measurement Task", 2048, NULL, 1, NULL, 1);
+  xTaskCreatePinnedToCore(vLCDTaskTime, "TFT Time presented in Display", 4096, NULL, 1, NULL, 1);
+
   analogReadResolution(ADC_RESOLUTION);
   xMutex_lcd = xSemaphoreCreateMutex();
+  xMutex_lcd_values = xSemaphoreCreateMutex();
   /*Servo Task*/
   xTaskCreatePinnedToCore(vServo, "Servo motor", 1024, NULL, 2, NULL, 1);
 
@@ -318,62 +323,89 @@ void vBrain_Task(void *pvParameters) {
   }
 }
 
-void vLCDTask(void *pvParameters) {
+void vLCDTaskTime(void *pvParameters) {
   ESP32Time rtc(3600);                  // offset in seconds GMT+1
   rtc.setTime(10, 50, 8, 17, 1, 2021);  // 17th Jan 2021 15:24:30
+  char stringTime[8];
+  TickType_t xLastWakeTime;
+  const TickType_t xFrequency = 1000;
+  for (;;) {
+    
+    xSemaphoreTake(xMutex_lcd, portMAX_DELAY);
+    {
+      tft.setTextSize(2);
+      tft.setCursor(10, 2);
+      tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
+      sprintf(stringTime, "%02d:%02d:%02d", rtc.getHour(true), rtc.getMinute(), rtc.getSecond());
+      tft.println(stringTime);
+    }
+    xSemaphoreGive(xMutex_lcd);
+    vTaskDelayUntil(&xLastWakeTime, xFrequency);
+  }
+}
+
+void vLCDTask(void *pvParameters) {
   const int position[3][3] = { { 0, 1, 2 }, { 1, 2, 0 }, { 2, 0, 1 } };
   const char *layout[3] = { "GAS ", "TEMP", "LUM " };
   int values_test[] = { 20, 24, 30 };
-  char stringTime[8];
   int pos_lcd;
   Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_MOSI, TFT_CLK, TFT_RST, TFT_MISO);
-  tft.begin();
-  tft.fillScreen(ILI9341_BLACK);
-  tft.setRotation(1);
-  tft.setTextSize(2);
-  tft.fillRect(5, 90, 70, 60, ILI9341_WHITE);
-  tft.fillRect(7, 92, 66, 56, ILI9341_BLACK);
-  tft.fillRect(245, 90, 70, 60, ILI9341_WHITE);
-  tft.fillRect(247, 92, 66, 56, ILI9341_BLACK);
-  tft.fillRect(85, 30, 150, 190, ILI9341_WHITE);
-  tft.fillRect(87, 32, 146, 186, ILI9341_BLACK);
-  tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
-  tft.setTextSize(2);
-  tft.setCursor(15, 100);
-  tft.println(layout[position[pos_lcd][0]]);
-  tft.setCursor(255, 100);
-  tft.println(layout[position[pos_lcd][2]]);
-  tft.setTextSize(5);
-  tft.setCursor(95, 40);
-  tft.println(layout[position[pos_lcd][1]]);
+  xSemaphoreTake(xMutex_lcd, portMAX_DELAY);
+  {
+    tft.begin();
+    tft.fillScreen(ILI9341_BLACK);
+    tft.setRotation(1);
+    tft.setTextSize(2);
+    tft.fillRect(5, 90, 70, 60, ILI9341_WHITE);
+    tft.fillRect(7, 92, 66, 56, ILI9341_BLACK);
+    tft.fillRect(245, 90, 70, 60, ILI9341_WHITE);
+    tft.fillRect(247, 92, 66, 56, ILI9341_BLACK);
+    tft.fillRect(85, 30, 150, 190, ILI9341_WHITE);
+    tft.fillRect(87, 32, 146, 186, ILI9341_BLACK);
+    tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
+    tft.setTextSize(2);
+    tft.setCursor(15, 100);
+    tft.println(layout[position[pos_lcd][0]]);
+    tft.setCursor(255, 100);
+    tft.println(layout[position[pos_lcd][2]]);
+    tft.setTextSize(5);
+    tft.setCursor(95, 40);
+    tft.println(layout[position[pos_lcd][1]]);
+  }
+  xSemaphoreGive(xMutex_lcd);
   for (;;) {
     if (xSemaphoreTake(xLCD_Semaphore, 1000 / portTICK_PERIOD_MS) == pdTRUE) {
-      xSemaphoreTake(xMutex_lcd, portMAX_DELAY);
+      xSemaphoreTake(xMutex_lcd_values, portMAX_DELAY);
       {
         pos_lcd = pos_lcd_global;
       }
-      tft.setTextSize(2);
-      tft.setCursor(15, 100);
-      tft.println(layout[position[pos_lcd][0]]);
-      tft.setCursor(255, 100);
-      tft.println(layout[position[pos_lcd][2]]);
-      
-      tft.setTextSize(5);
-      tft.setCursor(95, 40);
-      tft.println(layout[position[pos_lcd][1]]);
+      xSemaphoreGive(xMutex_lcd_values);
+      xSemaphoreTake(xMutex_lcd, portMAX_DELAY);
+      {
+        tft.setTextSize(2);
+        tft.setCursor(15, 100);
+        tft.println(layout[position[pos_lcd][0]]);
+        tft.setCursor(255, 100);
+        tft.println(layout[position[pos_lcd][2]]);
+        tft.setTextSize(5);
+        tft.setCursor(95, 40);
+        tft.println(layout[position[pos_lcd][1]]);
+      }
       xSemaphoreGive(xMutex_lcd);
     }
-    tft.setTextSize(2);
-    tft.setCursor(10, 2);
-    sprintf(stringTime, "%02d:%02d:%02d", rtc.getHour(true), rtc.getMinute(), rtc.getSecond());
-    tft.println(stringTime);
-    tft.setCursor(15, 125);
-    tft.println(values_test[position[pos_lcd][0]]);
-    tft.setCursor(255, 125);
-    tft.println(values_test[position[pos_lcd][2]]);
-    tft.setTextSize(5);
-    tft.setCursor(95, 90);
-    tft.println(values_test[position[pos_lcd][1]]);
+
+    xSemaphoreTake(xMutex_lcd, portMAX_DELAY);
+    {
+      tft.setTextSize(2);
+      tft.setCursor(15, 125);
+      tft.println(values_test[position[pos_lcd][0]]);
+      tft.setCursor(255, 125);
+      tft.println(values_test[position[pos_lcd][2]]);
+      tft.setTextSize(5);
+      tft.setCursor(95, 90);
+      tft.println(values_test[position[pos_lcd][1]]);
+    }
+    xSemaphoreGive(xMutex_lcd);
   }
 }
 
@@ -490,7 +522,7 @@ void vGestureManager_Task(void *pvParameters) {
       case we just print out a message). */
       switch (gesture) {
         case 2:
-          xSemaphoreTake(xMutex_lcd, portMAX_DELAY);
+          xSemaphoreTake(xMutex_lcd_values, portMAX_DELAY);
           {
             if (pos_lcd_global == 0) {
 
@@ -499,11 +531,11 @@ void vGestureManager_Task(void *pvParameters) {
               pos_lcd_global--;
             }
           }
-          xSemaphoreGive(xMutex_lcd);
+          xSemaphoreGive(xMutex_lcd_values);
           xSemaphoreGive(xLCD_Semaphore);
           break;
         case 3:
-          xSemaphoreTake(xMutex_lcd, portMAX_DELAY);
+          xSemaphoreTake(xMutex_lcd_values, portMAX_DELAY);
           {
             if (pos_lcd_global == 2) {
               pos_lcd_global = 0;
@@ -511,7 +543,7 @@ void vGestureManager_Task(void *pvParameters) {
               pos_lcd_global++;
             }
           }
-          xSemaphoreGive(xMutex_lcd);
+          xSemaphoreGive(xMutex_lcd_values);
           xSemaphoreGive(xLCD_Semaphore);
           break;
         case 4:
