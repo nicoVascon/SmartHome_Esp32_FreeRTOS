@@ -209,7 +209,7 @@ void vIdleCountPrinter_Task(void *pvParameters);
 void vBrain_Task(void *pvParameters);
 
 /* LCD Sensors Values Position*/
-int pos_lcd = 0;
+int pos_lcd_global = 0;
 
 /* Sensor Values */
 float sensorsValues[3] = { 1, 2, 3 };
@@ -217,9 +217,11 @@ float sensorsValues[3] = { 1, 2, 3 };
 /* Declare a variable of type SemaphoreHandle_t.  This is used to reference the
 semaphore that is used to synchronize a task with an interrupt. */
 SemaphoreHandle_t xSkywriter_Semaphore;
+SemaphoreHandle_t xLCD_Semaphore;
 
 /* Mutexes */
 SemaphoreHandle_t xSensorsValuesMutex;
+SemaphoreHandle_t xMutex_lcd;
 
 /*Queues*/
 QueueHandle_t xGesturesQueue;
@@ -253,6 +255,7 @@ void setup() {
 
   /* Mutex Creation */
   xSensorsValuesMutex = xSemaphoreCreateMutex();
+  xMutex_lcd = xSemaphoreCreateMutex();
 
   /*Sensors Tasks*/
   xTaskCreatePinnedToCore(vLEDPWM, "PWM LED Task", 1024, NULL, 1, NULL, 1);
@@ -264,9 +267,11 @@ void setup() {
   /*Servo Task*/
   xTaskCreatePinnedToCore(vServo_Task, "Servo motor", 1024, NULL, 2, NULL, 1);
 
+  vSemaphoreCreateBinary(xLCD_Semaphore);
+  if (xLCD_Semaphore != NULL) {
   /*LCD Task*/
   xTaskCreatePinnedToCore(vLCDTask, "TFT Display", 4096, NULL, 1, NULL, 1);
-
+  }
   /* Before a semaphore is used it must be explicitly created.  In this example
   a binary semaphore is created. */
   vSemaphoreCreateBinary(xSkywriter_Semaphore);
@@ -404,10 +409,11 @@ void vLCDTask(void *pvParameters) {
   const char *layout[3] = { "GAS ", "TEMP", "LUM " };
   float values_test[] = { 20, 24, 30 };
   char stringTime[8];
-  TickType_t xLastWakeTime;
-  const TickType_t xFrequency = 1000;
-  xLastWakeTime = xTaskGetTickCount();
+  int pos_lcd;
   Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_MOSI, TFT_CLK, TFT_RST, TFT_MISO);
+  TickType_t xTemp;
+  const TickType_t xFrequency = 1000;
+  xTemp = xTaskGetTickCount();
   tft.begin();
   tft.fillScreen(ILI9341_BLACK);
   tft.setRotation(1);
@@ -419,7 +425,34 @@ void vLCDTask(void *pvParameters) {
   tft.fillRect(85, 30, 150, 190, ILI9341_WHITE);
   tft.fillRect(87, 32, 146, 186, ILI9341_BLACK);
   tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
+  tft.setTextSize(2);
+  tft.setCursor(15, 100);
+  tft.println(layout[position[pos_lcd][0]]);
+  tft.setCursor(255, 100);
+  tft.println(layout[position[pos_lcd][2]]);
+  tft.setTextSize(5);
+  tft.setCursor(95, 40);
+  tft.println(layout[position[pos_lcd][1]]);
   for (;;) {
+    if (xSemaphoreTake(xLCD_Semaphore, (xFrequency-(xTaskGetTickCount()-xTemp))) == pdTRUE) {
+      xTemp = xTaskGetTickCount();
+      xSemaphoreTake(xMutex_lcd, portMAX_DELAY);
+      {
+        pos_lcd = pos_lcd_global;
+      }
+      xSemaphoreGive(xMutex_lcd);    
+    tft.setTextSize(2);
+    tft.setCursor(15, 100);
+    tft.println(layout[position[pos_lcd][0]]);
+    tft.setCursor(255, 100);
+    tft.println(layout[position[pos_lcd][2]]);
+      
+    tft.setTextSize(5);
+    tft.setCursor(95, 40);
+    tft.println(layout[position[pos_lcd][1]]);
+    }else{
+      xTemp = xTaskGetTickCount();
+    }
     xSemaphoreTake(xSensorsValuesMutex, portMAX_DELAY);
     {
       values_test[0] = sensorsValues[0];
@@ -432,20 +465,13 @@ void vLCDTask(void *pvParameters) {
     tft.setCursor(10, 2);
     sprintf(stringTime, "%02d:%02d:%02d", rtc.getHour(true), rtc.getMinute(), rtc.getSecond());
     tft.println(stringTime);
-    tft.setCursor(15, 100);
-    tft.println(layout[position[pos_lcd][0]]);
-    tft.setCursor(255, 100);
-    tft.println(layout[position[pos_lcd][2]]);
     tft.setCursor(15, 125);
     tft.printf("%4.0f", values_test[position[pos_lcd][0]]);
     tft.setCursor(255, 125);
-    tft.printf("%4.0f\n", values_test[position[pos_lcd][2]]);
+    tft.printf("%4.0f", values_test[position[pos_lcd][2]]);
     tft.setTextSize(5);
-    tft.setCursor(95, 40);
-    tft.println(layout[position[pos_lcd][1]]);
     tft.setCursor(95, 90);
-    tft.printf("%4.0f\n", values_test[position[pos_lcd][1]]);
-    vTaskDelayUntil(&xLastWakeTime, xFrequency / portTICK_PERIOD_MS);
+    tft.printf("%4.0f", values_test[position[pos_lcd][1]]);
   }
 }
 
@@ -558,25 +584,35 @@ void vSkywriter_Task(void *pvParameters) {
 void vGestureManager_Task(void *pvParameters) {
   char gesture;
   int pos_servo = 0;
-  /* As per most tasks, this task is implemented within an infinite loop. */
   for (;;) {
     if (xQueueReceive(xGesturesQueue, &gesture, portMAX_DELAY) != errQUEUE_EMPTY) {
       /* To get here the event must have occurred.  Process the event (in this
       case we just print out a message). */
       switch (gesture) {
         case 2:
-          if (pos_lcd == 0) {
-            pos_lcd = 2;
+          xSemaphoreTake(xMutex_lcd, portMAX_DELAY);
+          {
+            if (pos_lcd_global == 0) {
+
+              pos_lcd_global = 2;
           } else {
-            pos_lcd--;
+              pos_lcd_global--;
           }
+          }
+          xSemaphoreGive(xMutex_lcd);
+          xSemaphoreGive(xLCD_Semaphore);
           break;
         case 3:
-          if (pos_lcd == 2) {
-            pos_lcd = 0;
+          xSemaphoreTake(xMutex_lcd, portMAX_DELAY);
+          {
+            if (pos_lcd_global == 2) {
+              pos_lcd_global = 0;
           } else {
-            pos_lcd++;
+              pos_lcd_global++;
           }
+          }
+          xSemaphoreGive(xMutex_lcd);
+          xSemaphoreGive(xLCD_Semaphore);
           break;
         case 4:
           if (pos_servo != 4) {
