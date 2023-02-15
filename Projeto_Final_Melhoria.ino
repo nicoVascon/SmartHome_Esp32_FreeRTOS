@@ -214,6 +214,9 @@ void vBrain_Task(void *pvParameters);
 void vPrinter_Task(void *pvParameters);
 
 TaskHandle_t xBuzzerTask_Handle;
+TaskHandle_t xTempTask_Handle;
+TaskHandle_t xLumTask_Handle;
+TaskHandle_t xGasTask_Handle;
 
 /* LCD Sensors Values Position*/
 int pos_lcd_global = 0;
@@ -245,11 +248,7 @@ void servopulse(int myangle);
 volatile unsigned long ulIdleCycleCount = 0UL;
 
 void setup() {
-  Serial.begin(9600);
-
-  while (!Serial) {};
-
-  Serial.println("Hello world!");
+  
 
   /*Idle Hook Task Definition*/
   esp_register_freertos_idle_hook(my_vApplicationIdleHook);
@@ -268,9 +267,9 @@ void setup() {
 
   /*Sensors Tasks*/
   xTaskCreatePinnedToCore(vLEDPWM, "PWM LED Task", 1024, NULL, 1, NULL, 1);
-  xTaskCreatePinnedToCore(vTemperature, "Temperature Measurement Task", 2048, NULL, 1, NULL, 1);
-  xTaskCreatePinnedToCore(vAnalogGas, "Analog Gas Measurement Task", 2048, NULL, 1, NULL, 1);
-  xTaskCreatePinnedToCore(vAmbientLight, "Ambient Light Measurement Task", 2048, NULL, 1, NULL, 1);
+  xTaskCreatePinnedToCore(vTemperature, "Temperature Measurement Task", 2048, NULL, 2, &xTempTask_Handle, 1);
+  xTaskCreatePinnedToCore(vAnalogGas, "Analog Gas Measurement Task", 2048, NULL, 1, &xGasTask_Handle, 1);
+  xTaskCreatePinnedToCore(vAmbientLight, "Ambient Light Measurement Task", 2048, NULL, 1, &xLumTask_Handle, 1);
   analogReadResolution(ADC_RESOLUTION);
 
   /*Servo Task*/
@@ -314,6 +313,12 @@ void setup() {
 }
 
 void vPrinter_Task(void *pvParameters){
+  Serial.begin(9600);
+
+  while (!Serial) {};
+
+  Serial.println("Hello world!");
+
   std::string messageToPrint;
   for(;;){
     while (xQueueReceive(xStringsQueue, &messageToPrint, portMAX_DELAY) != errQUEUE_EMPTY) {
@@ -337,7 +342,7 @@ void  IRAM_ATTR  vInterruptHandler( void ){
     xBuzzerTask_Handle = NULL;
   }else{
     // Serial.print("Create!!!");
-    xTaskCreatePinnedToCore(vBuzzer_Task, "Buzzer Task", 2048, NULL, 1, &xBuzzerTask_Handle, 1);    
+    xTaskCreatePinnedToCore(vBuzzer_Task, "Buzzer Task", 2048, NULL, 3, &xBuzzerTask_Handle, 1);    
   }
   
   // Serial.print("\n\nInt\n\n");
@@ -655,12 +660,14 @@ void vGestureManager_Task(void *pvParameters) {
           if (pos_servo != 4) {
             pos_servo++;
             xQueueSendToBack(xServoQueue, &pos_servo, 0);
+            updateSensorsPriority(pos_servo);
           }
           break;
         case 5:
           if (pos_servo != 0) {
             pos_servo--;
             xQueueSendToBack(xServoQueue, &pos_servo, 0);
+            updateSensorsPriority(pos_servo);
           }
           break;
         default:
@@ -668,6 +675,29 @@ void vGestureManager_Task(void *pvParameters) {
       }
       sendToPrint("Gesture Manager Task - Gesture: " + std::to_string(gesture) + "\n");      
     }    
+  }
+}
+
+void updateSensorsPriority(int mainSensor){
+  if(mainSensor < 0 || mainSensor > 2){
+    return;
+  }
+  switch (mainSensor) {
+  case 0:
+  vTaskPrioritySet( xTempTask_Handle, (unsigned portBASE_TYPE) 2);
+  vTaskPrioritySet( xLumTask_Handle, (unsigned portBASE_TYPE) 1);
+  vTaskPrioritySet( xGasTask_Handle, (unsigned portBASE_TYPE) 1);  
+  break;
+  case 1:
+  vTaskPrioritySet( xLumTask_Handle, (unsigned portBASE_TYPE) 2);
+  vTaskPrioritySet( xGasTask_Handle, (unsigned portBASE_TYPE) 1);
+  vTaskPrioritySet( xTempTask_Handle, (unsigned portBASE_TYPE) 1);
+  break;
+  case 2:
+  vTaskPrioritySet( xGasTask_Handle, (unsigned portBASE_TYPE) 2);
+  vTaskPrioritySet( xTempTask_Handle, (unsigned portBASE_TYPE) 1);
+  vTaskPrioritySet( xLumTask_Handle, (unsigned portBASE_TYPE) 1);
+  break;
   }
 }
 
