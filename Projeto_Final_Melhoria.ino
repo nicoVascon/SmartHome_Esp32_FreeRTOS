@@ -168,11 +168,12 @@ const int durations[] = {
 };
 /*--------------------------------------------------*/
 
-#define PIN_TRFD 27
+#define PIN_TRFD 12
 #define PIN_RESET 17
 
 //---------------- Actuators PINS -----------------//
 #define LED_PIN 13  //led
+#define button_pin 27
 //---------------- Sensors PINS -----------------//
 #define LM35_Pin 4    //temperature lm35
 #define GAS_PIN 15    //analog gas
@@ -195,6 +196,7 @@ const int durations[] = {
 
 /*IRS*/
 void my_poll(void);
+void  IRAM_ATTR  vInterruptHandler( void );
 
 /* The task functions. */
 void vSkywriter_Task(void *pvParameters);
@@ -207,6 +209,8 @@ void vLCDTask(void *pvParameters);
 void vServo_Task(void *pvParameters);
 void vIdleCountPrinter_Task(void *pvParameters);
 void vBrain_Task(void *pvParameters);
+
+TaskHandle_t xBuzzerTask_Handle;
 
 /* LCD Sensors Values Position*/
 int pos_lcd_global = 0;
@@ -292,12 +296,34 @@ void setup() {
     /* Create the other task in exactly the same way. */
     xTaskCreatePinnedToCore(vGestureManager_Task, "Gesture Manager", 2048, NULL, 1, NULL, 1);
   }
+
+  pinMode(button_pin, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(button_pin), &vInterruptHandler, FALLING);
   /* Create Buzzer Task. */
-  xTaskCreatePinnedToCore(vBuzzer_Task, "Buzzer Task", 2048, NULL, 1, NULL, 1);
+  // xTaskCreatePinnedToCore(vBuzzer_Task, "Buzzer Task", 2048, NULL, 1, &xBuzzerTask_Handle, 1);
   /* Create Idle Count Printer Task. */
   xTaskCreatePinnedToCore(vIdleCountPrinter_Task, "vIdleCountPrinter Task", 2048, NULL, 2, NULL, 1);
   /* Create Brain Task. */
   xTaskCreatePinnedToCore(vBrain_Task, "Brain Task", 2048, NULL, 1, NULL, 1);
+}
+
+TickType_t xLastIntTime = xTaskGetTickCount();
+
+void  IRAM_ATTR  vInterruptHandler( void ){
+  if(xTaskGetTickCount() - xLastIntTime < 400){
+    return;
+  }
+  xLastIntTime = xTaskGetTickCount();
+  if(xBuzzerTask_Handle != NULL){
+    // Serial.print("Delete!!!");
+    vTaskDelete( xBuzzerTask_Handle ); 
+    xBuzzerTask_Handle = NULL;
+  }else{
+    // Serial.print("Create!!!");
+    xTaskCreatePinnedToCore(vBuzzer_Task, "Buzzer Task", 2048, NULL, 1, &xBuzzerTask_Handle, 1);    
+  }
+  
+  // Serial.print("\n\nInt\n\n");
 }
 
 void vBrain_Task(void *pvParameters) {
