@@ -207,7 +207,7 @@ void vAnalogGas(void *pvParameters);
 void vAmbientLight(void *pvParameters);
 void vLCDTask(void *pvParameters);
 
-int pos_lcd = 0;
+int pos_lcd_global = 0;
 
 /* Declare a variable of type SemaphoreHandle_t.  This is used to reference the
 semaphore that is used to synchronize a task with an interrupt. */
