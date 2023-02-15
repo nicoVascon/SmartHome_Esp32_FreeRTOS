@@ -327,6 +327,9 @@ void vLCDTask(void *pvParameters) {
   char stringTime[8];
   int pos_lcd;
   Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_MOSI, TFT_CLK, TFT_RST, TFT_MISO);
+  TickType_t xTemp;
+  const TickType_t xFrequency = 1000;
+  xTemp = xTaskGetTickCount();
   tft.begin();
   tft.fillScreen(ILI9341_BLACK);
   tft.setRotation(1);
@@ -347,11 +350,13 @@ void vLCDTask(void *pvParameters) {
   tft.setCursor(95, 40);
   tft.println(layout[position[pos_lcd][1]]);
   for (;;) {
-    if (xSemaphoreTake(xLCD_Semaphore, 1000 / portTICK_PERIOD_MS) == pdTRUE) {
+    if (xSemaphoreTake(xLCD_Semaphore, (xFrequency-(xTaskGetTickCount()-xTemp))) == pdTRUE) {
+      xTemp = xTaskGetTickCount();
       xSemaphoreTake(xMutex_lcd, portMAX_DELAY);
       {
         pos_lcd = pos_lcd_global;
       }
+      xSemaphoreGive(xMutex_lcd);
       tft.setTextSize(2);
       tft.setCursor(15, 100);
       tft.println(layout[position[pos_lcd][0]]);
@@ -361,7 +366,8 @@ void vLCDTask(void *pvParameters) {
       tft.setTextSize(5);
       tft.setCursor(95, 40);
       tft.println(layout[position[pos_lcd][1]]);
-      xSemaphoreGive(xMutex_lcd);
+    }else{
+      xTemp = xTaskGetTickCount();
     }
     tft.setTextSize(2);
     tft.setCursor(10, 2);
